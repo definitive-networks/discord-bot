@@ -15,7 +15,7 @@ Discord Bot isn't a bot, but a simple and flexible framework using [discord.js](
   - `interactionButton` and `interactionSelect` events
   - No forced features
 
-## Getting Started
+## Installation
 Ensure you have [Node.js](https://nodejs.org/) 14.0.0 or higher installed, then run:
 
 ```sh-session
@@ -25,15 +25,20 @@ npm install discord.js@dev @definitive-networks/discord-bot
 ## Example Usage
 
 ```js
+// ./index.js
+const path = require('path');
 const DiscordBot = require('@definitive-networks/discord-bot');
+
 const client = new DiscordBot({
   botDir: path.resolve(__dirname),
   defaultPrefix: '?',
   intents: ['GUILDS', 'GUILD_MESSAGES']
 });
+
 client.start(/*DISCORD BOT TOKEN*/);
 ```
 
+##### Command Example
 ```js
 // ./commands/ping.js
 module.exports = {
@@ -51,6 +56,7 @@ module.exports = {
 }
 ```
 
+##### Event Example
 ```js
 // ./events/ready.js
 module.exports = {
@@ -63,4 +69,4 @@ module.exports = {
 ```
 
 ## Documentation
-Head to the [wiki](https://github.com/definitive-networks/discord-bot/wiki) for more examples and information.
+Check out the [wiki](https://github.com/definitive-networks/discord-bot/wiki) for more examples and documentation.
