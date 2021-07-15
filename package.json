@@ -1,5 +1,5 @@
 {
-  "name": "discord-bot",
+  "name": "@definitive-networks/discord-bot",
   "version": "0.0.1",
   "description": "A simple and flexible bot framework using Discord.js",
   "engines": {
