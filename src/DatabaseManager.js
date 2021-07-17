@@ -1,4 +1,5 @@
 'use strict';
+
 const db = require('quick.db');
 
 class DatabaseManager {
