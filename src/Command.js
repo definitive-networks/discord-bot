@@ -85,10 +85,13 @@ class Command {
         }
       }
       if (this.permissions.channel) {
-        const missingPerms = message.channel.permissionsFor(this.client.user).missing(this.permissions.channel);
+        const missingPerms = message.channel
+          .permissionsFor(this.client.user)
+          .missing(['VIEW_CHANNEL', 'SEND_MESSAGES', ...this.permissions.channel]);
         if (missingPerms.length > 0) {
+          if (missingPerms.includes('VIEW_CHANNEL') || missingPerms.includes('SEND_MESSAGES')) return false;
           if (missingPerms.length === 1) {
-            message.reply(`I'm missing the required permissionf for the \`${this.name}\` command: ${missingPerms[0]}`);
+            message.reply(`I'm missing the required permissions for the \`${this.name}\` command: ${missingPerms[0]}`);
             return false;
           }
           message.reply(
