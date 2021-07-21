@@ -1,4 +1,5 @@
 'use strict';
+
 const db = require('quick.db');
 
 class DatabaseManager {
@@ -28,7 +29,7 @@ class DatabaseManager {
     let guildDB = this.guilds.get(guild_id);
     if (!guildDB) {
       this.guilds.set(guild_id, {
-        prefix: this.client.config.defaultPrefix,
+        prefix: this.client.defaultPrefix,
       });
       guildDB = this.guilds.get(guild_id);
     }

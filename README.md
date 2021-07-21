@@ -19,7 +19,7 @@ Discord Bot isn't a bot, but a simple and flexible framework using [discord.js](
 Ensure you have [Node.js](https://nodejs.org/) 14.0.0 or higher installed, then run:
 
 ```sh-session
-npm install discord.js@dev @definitive-networks/discord-bot
+npm install discord.js@dev quick.db @definitive-networks/discord-bot
 ```
 
 ## Example Usage
@@ -46,11 +46,11 @@ module.exports = {
   description: 'Ping the bot',
   aliases: ['ms'],
   execute(message, args, client) {
-    message.channel.send('Pong!');
+    message.channel.send(`Pong! \`${Date.now() - message.createdTimestamp}ms\``);
   },
   SlashCommand: {
     execute(interaction, args, client) {
-      interaction.reply('Pong!');
+      interaction.reply(`Pong! \`${Date.now() - interaction.createdTimestamp}ms\``);
     }
   }
 }
