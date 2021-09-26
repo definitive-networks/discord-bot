@@ -1,42 +1,50 @@
 'use strict';
 
-const db = require('quick.db');
+const { PrismaClient } = require('@prisma/client');
 
 class DatabaseManager {
-  constructor(client, tables) {
+  constructor(client) {
     this.client = client;
-    this.users = new db.table('users');
-    this.guilds = new db.table('guilds');
-    this.commands = new db.table('commands');
-    if (tables && tables.length) {
-      tables.map(tableName => {
-        this[tableName] = new db.table(tableName);
-        return this[tableName];
-      });
-    }
+    this.prisma = new PrismaClient();
+    this.users = this.prisma.user;
+    this.guilds = this.prisma.guild;
+    this.commands = this.prisma.command;
   }
 
-  getUser(user_id) {
-    let userDB = this.users.get(user_id);
-    if (!userDB) {
-      this.users.set(user_id, false);
-      userDB = this.users.get(user_id);
+  async getUser(user_id) {
+    let userEntry = await this.users.findUnique({
+      where: {
+        id: user_id.toString(),
+      },
+    });
+    if (!userEntry) {
+      userEntry = await this.users.create({
+        data: {
+          id: user_id,
+        },
+      });
     }
-    return userDB;
+    return userEntry;
   }
 
-  getGuild(guild_id) {
-    let guildDB = this.guilds.get(guild_id);
-    if (!guildDB) {
-      this.guilds.set(guild_id, {
-        prefix: this.client.config.defaultPrefix,
+  async getGuild(guild_id) {
+    let guildEntry = await this.guilds.findUnique({
+      where: {
+        id: guild_id.toString(),
+      },
+    });
+    if (!guildEntry) {
+      guildEntry = await this.guilds.create({
+        data: {
+          id: guild_id,
+        },
       });
-      guildDB = this.guilds.get(guild_id);
     }
-    return guildDB;
+    return guildEntry;
   }
 
   getCommand(guild_id = 'global') {
+    let cmdEntry = await this.commands.findUnique({})
     let commandDB = this.commands.get(guild_id);
     if (!commandDB) {
       this.commands.set(guild_id, false);

@@ -1,47 +1,85 @@
+const { ApplicationCommandOptionType, GuildMember } = require('discord.js');
+
 module.exports = {
   name: 'set',
-  description: "Edit the bot's settings.",
-  usage: '<setting> <value>',
-  args: true,
-  guildOnly: true,
+  description: 'Edit settings for the bot.',
+  global: false,
   permissions: {
     member: ['BOT_OWNER', 'GUILD_OWNER', 'ADMINISTRATOR']
   },
-  aliases: ['settings', 'config', 'conf'],
-  execute(message, args, client) {
-    switch(args[0]) {
-      // Set prefix in guild example
-      case ('prefix'): {
-        if (args[1]) {
-          client.database.guilds.set(`${message.guild.id}.prefix`, args[1]);
-          message.channel.send(`Prefix updated: \`${args[1]}\``);
-        } else {
-          message.channel.send(`No prefix specified!`);
+  //
+  arguments: (client) => [
+    {
+      type: ApplicationCommandOptionType.SUB_COMMAND,
+      name: 'toggle',
+      description: 'Toggle a command for an entire guild, channel, role, or user.',
+      options: [
+        {
+          type: ApplicationCommandOptionType.STRING,
+          name: 'command',
+          description: 'The command to toggle.',
+          required: true,
+          choices: [
+            client.commands.cache.map(cmd => (
+              { name: cmd.name, value: `${cmd.name}_cmd` }
+            )) ?? { name: 'No Commands Found', value: 'no_commands_found'}
+          ]
+        },
+        {
+          type: ApplicationCommandOptionType.BOOLEAN,
+          name: 'boolean',
+          description: 'Whether to enable or disable the command.',
+          required: true,
+        },
+        {
+          type: ApplicationCommandOptionType.MENTIONABLE,
+          name: 'target',
+          description: 'The user or role to toggle this command for.'
+        },
+        {
+          type: ApplicationCommandOptionType.CHANNEL,
+          name: 'channel',
+          description: 'The channel to toggle the command for.'
         }
-        break;
-      }
-      // Enable command in guild example
-      case ('enable'): {
-        if (args[1] && client.commands.cache.has(args[1])) {
-          client.database.guilds.set(`${message.guild.id}.${args[1]}`, true);
-          message.channel.send(`Enabled command: \`${args[1]}\``);
+      ]
+    },
+  ],
+  //
+  execute(interaction, options, client) {
+    const subCommand = options.getSubcommand();
+    switch(subCommand) {
+      case ('toggle'): {
+
+        const toggleCmd = options.get('command');
+
+        if (client.commands.cache.has(toggleCmd) && toggleCmd !== 'set') {
+
+          const toggleVal = options.get('boolean');
+          const toggleTarget = options.get('target');
+          const toggleChannel = options.get('channel');
+
+          const targetCmd = client.commands.cache.get(toggleCmd);
+          const targetGuild = client.guilds.cache.get(targetCmd.guildId);
+
+          const permissionData = {
+            command: targetCmd.id,
+            permissions: [{
+              id: toggleTarget.id,
+              type: toggleTarget.name ? 'ROLE' : 'USER',
+              permission: toggleVal
+            }]
+          };
+
+          (toggleChannel || !targetCmd.global)
+            ? targetGuild.commands.permissions.add(permissionData)
+            : client.application.commands.permissions.add(permissionData);
+
+          client.database.guilds.set(`${targetCmd.guildId}.${toggleCmd}`, toggleVal);
+          interaction.reply(`${toggleVal ? 'Enabled' : 'Disabled'} command: \`${toggleCmd}\``);
         } else {
-          (args[1])
-            ? message.channel.send(`Command not found!`)
-            : message.channel.send('No command specified!');
-        }
-        break;
-      }
-      // Disable command in guild example
-      case ('disable'): {
-        // prevent the settings command from being disabled
-        if (args[1] && args[1] !== 'set' && client.commands.cache.has(args[1])) {
-          client.database.guilds.set(`${message.guild.id}.${args[1]}`, false);
-          message.channel.send(`Disabled command: \`${args[1]}\``);
-        } else {
-          (args[1])
-            ? message.channel.send('Command not found!')
-            : message.channel.send('No command specified!');
+          client.commands.cache.has(toggleCmd)
+            ? interaction.reply('Cannot disable settings command!')
+            : interaction.reply('Command not found!');
         }
         break;
       }

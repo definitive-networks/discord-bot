@@ -1,39 +1,19 @@
 {
-  "name": "@definitive-networks/discord-bot",
+  "name": "example-discord-bot",
   "version": "0.0.1",
-  "description": "A simple and flexible bot framework using Discord.js",
+  "description": "A simple example of Discord Bot.",
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=7.0.0"
   },
-  "main": "./src/index.js",
-  "files": [
-    "src"
-  ],
+  "main": "./bot.js",
   "scripts": {
     "test": "npm run lint",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "prettier": "prettier --write src/**/*.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/definitive-networks/discord-bot.git"
-  },
-  "keywords": [
-    "discord",
-    "bot",
-    "commands",
-    "framework",
-    "template",
-    "handler"
-  ],
-  "author": "Fasko",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/definitive-networks/discord-bot/issues"
-  },
-  "homepage": "https://github.com/definitive-networks/discord-bot#readme",
   "devDependencies": {
     "cross-env": "^7.0.3",
     "eslint": "^7.30.0",

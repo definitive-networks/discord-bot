@@ -15,9 +15,18 @@ class BotClient extends Client {
     };
 
     this.owners = options.owner ?? [];
-    this.defaultPrefix = options.defaultPrefix ?? '!';
 
-    this.database = new DatabaseManager(this, options.tables ?? []);
+    if (options.database && options.database.enabled) {
+      try {
+        if (require.resolve('@prisma/client')) {
+          this.database = new DatabaseManager(this);
+        }
+      } catch (error) {
+        console.error("Prisma client can't be found!");
+        process.exit(error.code);
+      }
+    }
+
     this.commands = new CommandsManager(this);
 
     this.setCommands();
@@ -32,6 +41,24 @@ class BotClient extends Client {
   }
 
   setEvents(directory = this.config.eventsDir) {
+    require('require-all')({
+      dirname: directory,
+      resolve: data => {
+        if (data.name && data.execute) {
+          if (data.once) {
+            this.once(data.name, async (...args) => {
+              await data.execute(...args, this);
+            });
+          } else {
+            this.on(data.name, async (...args) => {
+              await data.execute(...args, this);
+            });
+          }
+          return this.emit('debug', `A ${data.name} event has been created.`);
+        }
+        return this.emit('warn', `Failed to create event for:\n${data}`);
+      },
+    });
     this.once('ready', async () => {
       await this.commands.syncSlash();
     });
@@ -59,24 +86,6 @@ class BotClient extends Client {
       this.on('warn', info => console.log(info));
       this.on('error', error => console.log(error));
     }
-    require('require-all')({
-      dirname: directory,
-      resolve: data => {
-        if (data.name && data.execute) {
-          if (data.once) {
-            this.once(data.name, async (...args) => {
-              await data.execute(...args, this);
-            });
-          } else {
-            this.on(data.name, async (...args) => {
-              await data.execute(...args, this);
-            });
-          }
-          return this.emit('debug', `A ${data.name} event has been created.`);
-        }
-        return this.emit('warn', `Failed to create event for:\n${data}`);
-      },
-    });
   }
 
   start(bot_token) {
