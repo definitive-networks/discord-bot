@@ -1,14 +1,4 @@
-*.sqlite
-
-node_modules/
-package-lock.json
-
-logs
-*.log
-
-.tmp/
-.vscode/
-.idea/
-
+node_modules
+# Keep environment variables out of version control
 .env
-.env.test
+.vs
