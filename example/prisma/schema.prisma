@@ -19,7 +19,10 @@ model Guild {
 }
 
 model Command {
-  id      String  @id
-  guildId String
-  enabled Boolean
+  id        String  @id
+  guildId   String
+  name      String
+  enabled   Boolean
+  allowList String
+  blockList String
 }
