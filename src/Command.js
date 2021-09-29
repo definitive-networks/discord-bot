@@ -6,16 +6,14 @@ class Command {
   constructor(client, data) {
     this.client = client;
     this.name = data.name;
-    this.aliases = data.aliases || [];
     this.group = data.group;
     this.description = data.description;
-    this.usage = data.usage || null;
-    this.args = Boolean(data.args);
-    this.argsCount = data.argsCount || 0;
-    this.guildOnly = Boolean(data.guildOnly);
-    this.permissions = data.permissions
-      ? { channel: data.permissions.channel ?? [], member: data.permissions.member ?? [] }
-      : { channel: [], member: [] };
+    this.guilds = data.guilds ?? [];
+    this.permissions = { 
+      channel: data.permissions?.channel ?? [], 
+      member: data.permissions?.member ?? [] 
+    };
+    this.arguments = data.arguments;
     this.execute = data.execute;
     this.SlashCommand = data.SlashCommand;
     this.slashData = data.SlashCommand && {
@@ -34,12 +32,8 @@ class Command {
       case data.name !== data.name.toLowerCase():
       case !data.execute && (!data.SlashCommand || typeof data.SlashCommand !== 'object'):
       case !data.execute && data.SlashCommand && !data.SlashCommand.execute:
-      case data.aliases && (!Array.isArray(data.aliases) || data.aliases.map(alias => typeof alias !== 'string')):
-      case data.aliases && data.aliases.some(alias => alias !== alias.toLowerCase()):
       case data.group && typeof data.group !== 'string':
       case data.description && typeof data.description !== 'string':
-      case data.usage && typeof data.usage !== 'string':
-      case data.args && typeof data.args !== 'boolean':
       case data.permissions && data.permissions.member && !Array.isArray(data.permissions.member):
       case data.permissions && data.permissions.channel && !Array.isArray(data.permissions.channel): {
         return false;
