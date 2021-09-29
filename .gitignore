@@ -1,4 +1,13 @@
-node_modules
-# Keep environment variables out of version control
+*.db
+
+node_modules/
+
+logs
+*.log
+
+.tmp/
+.vscode/
+.vs/
+.idea/
+
 .env
-.vs
