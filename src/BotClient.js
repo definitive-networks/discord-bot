@@ -2,94 +2,146 @@
 
 const path = require('path');
 const { Client } = require('discord.js');
-const CommandsManager = require('./CommandManager');
-const DatabaseManager = require('./DatabaseManager');
+const { CommandManager, DatabaseManager } = require('./managers');
+const { Config, Util } = require('./util');
 
 class BotClient extends Client {
   constructor(options = {}) {
     super(options);
 
-    this.config = {
-      commandsDir: options.commandsDir ?? (options.botDir && path.join(options.botDir, 'commands')),
-      eventsDir: options.eventsDir ?? (options.botDir && path.join(options.botDir, 'events')),
-    };
+    this.config = Util.mergeDefault(Config.createDefault(), options);
 
-    this.owners = options.owner ?? [];
+    if (this.config.botDir) {
+      if (!this.config.commandsDir) {
+        this.config.commandsDir = path.join(this.config.botDir, 'commands');
+      }
+      if (!this.config.eventsDir) {
+        this.config.eventsDir = path.join(this.config.botDir, 'events');
+      }
+      if (!this.config.interactionsDir) {
+        this.config.interactionsDir = path.join(this.config.interactionsDir, 'interactions');
+      }
+    }
 
-    if (options.database && options.database.enabled) {
+    if (this.config.database && this.config.database.enabled) {
       try {
         if (require.resolve('@prisma/client')) {
-          this.database = new DatabaseManager(this);
+          this.database = new DatabaseManager(this, this.config.database.options);
         }
       } catch (error) {
-        console.error("Prisma client can't be found!");
+        console.error("Module not found: @prisma/client");
         process.exit(error.code);
       }
     }
 
-    this.commands = new CommandsManager(this);
+    this.commands = new CommandManager(this);
 
-    this.setCommands();
-    this.setEvents();
+    this.on('error', err => console.log(err));
+
+    if (process.env.NODE_ENV === 'development') this.initDebugEvents();
+
+    if (Boolean(this.config.initCommands) === true) this.initCommands();
+    if (Boolean(this.config.initEvents) === true) this.initEvents();
+    if (Boolean(this.config.initInteractions) === true) this.initInteractions();
   }
 
-  setCommands(directory = this.config.commandsDir) {
+  get owners() {
+    if (!this.config.owners || !this.config.owners.length) return null;
+    if (typeof this.config.owners === 'string') return [this.config.owners];
+    const owners = [];
+    this.config.owners.forEach(owner => owners.push(owner));
+    return owners;
+  }
+
+  isOwner(user) {
+    const owners = this.owners;
+    if (!owners) return false;
+    const resolvedUser = this.users.resolve(user);
+    if (!resolvedUser) return false;
+    return owners.includes(resolvedUser.id);
+  }
+
+  initCommands(directory = this.config.commandsDir) {
     require('require-all')({
       dirname: directory,
       resolve: data => this.commands.create(data),
     });
   }
 
-  setEvents(directory = this.config.eventsDir) {
+  initDebugEvents() {
+    this.on('applicationCommandCreate', command => {
+      this.emit(
+        'debug',
+        `Created "${command.name}" command ${
+          command.guildId ? `in ${command.guild.name} (${command.guildId})` : 'globally'
+        }.`,
+      );
+    });
+    this.on('applicationCommandDelete', command => {
+      this.emit(
+        'debug',
+        `Deleted "${command.name}" command ${
+          command.guildId ? `in ${command.guild.name} (${command.guildId})` : 'globally'
+        }.`,
+      );
+    });
+    this.on('applicationCommandUpdate', ({ newCommand: command }) => {
+      this.emit(
+        'debug',
+        `Updated "${command.name}" command ${
+          command.guildId ? `in ${command.guild.name} (${command.guildId})` : 'globally'
+        }.`,
+      );
+    });
+    this.on('debug', message => console.log(message));
+    this.on('warn', info => console.log(info));
+  }
+
+  initEvents(directory = this.config.eventsDir) {
     require('require-all')({
       dirname: directory,
       resolve: data => {
-        if (data.name && data.execute) {
+        if (Validator.isEvent(data)) {
           if (data.once) {
             this.once(data.name, async (...args) => {
-              await data.execute(...args, this);
+              await data.execute(...args, this).catch(err => this.emit('error', err));
             });
           } else {
             this.on(data.name, async (...args) => {
-              await data.execute(...args, this);
+              await data.execute(...args, this).catch(err => this.emit('error', err));
             });
           }
-          return this.emit('debug', `A ${data.name} event has been created.`);
+          return this.emit('debug', `Event created: ${data.name}`);
         }
-        return this.emit('warn', `Failed to create event for:\n${data}`);
+        return this.emit('warn', `Event failed to create: ${data}`)
       },
     });
-    this.once('ready', async () => {
-      await this.commands.syncSlash();
-    });
-    this.on('messageCreate', async message => {
-      await this.commands.handle(message);
-    });
-    this.on('interactionCreate', async interaction => {
-      switch (true) {
-        case interaction.isCommand(): {
-          await this.commands.handle(interaction);
-          break;
-        }
-        case interaction.isButton(): {
-          this.emit('interactionButton', interaction);
-          break;
-        }
-        case interaction.isSelectMenu(): {
-          this.emit('interactionSelectMenu', interaction);
-          break;
-        }
+    this.once('ready', () => this.commands.sync().catch(err => this.emit('error', err)));
+    this.on('interactionCreate', interaction => {
+      if (interaction.isCommand() || interaction.isContextMenu()) {
+        this.commands.handle(interaction).catch(err => this.emit('error', err));
       }
     });
-    if (process.env.NODE_ENV === 'development') {
-      this.on('debug', message => console.log(message));
-      this.on('warn', info => console.log(info));
-      this.on('error', error => console.log(error));
-    }
   }
 
-  start(bot_token) {
-    this.login(bot_token ?? process.env.DISCORD_TOKEN);
+  initInteractions(directory = this.config.interactionsDir) {
+    require('require-all')({
+      dirname: directory,
+      resolve: execute => {
+        this.on('interactionCreate', interaction => {
+          await execute(interaction, interaction.options, this);
+        });
+      },
+    });
+  }
+
+  start(bot_token = this.token) {
+    this.login(bot_token);
+  }
+
+  async destroy() {
+    await super.destroy();
+    if (this.database) await this.database.$disconnect();
   }
 }
 
