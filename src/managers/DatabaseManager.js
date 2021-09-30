@@ -14,40 +14,40 @@ class DatabaseManager extends PrismaClient {
     this.$on('warn', info => this.manager.emit('warn', info));
   }
 
-  async getUser(user_id) {
-    let userEntry = await this.users.findUnique({
+  async getUser(user_id, createUnknown = false) {
+    let entry = await this.users.findUnique({
       where: {
         id: user_id.toString(),
       },
     });
-    if (!userEntry) {
-      userEntry = await this.users.create({
+    if (!entry && createUnknown) {
+      entry = await this.users.create({
         data: {
           id: user_id,
         },
       });
     }
-    return userEntry;
+    return entry;
   }
 
-  async getGuild(guild_id) {
-    let guildEntry = await this.guilds.findUnique({
+  async getGuild(guild_id, createUnknown = false) {
+    let entry = await this.guilds.findUnique({
       where: {
         id: guild_id.toString(),
       },
     });
-    if (!guildEntry) {
-      guildEntry = await this.guilds.create({
+    if (!entry && createUnknown) {
+      entry = await this.guilds.create({
         data: {
           id: guild_id,
         },
       });
     }
-    return guildEntry;
+    return entry;
   }
 
   async setCommand(command_data) {
-    return this.commands.upsert({
+    let entry = await this.commands.upsert({
       where: { id: command_data.id },
       update: {
         guildId: command_data.guild ? command_data.guildId : 'global',
@@ -58,33 +58,37 @@ class DatabaseManager extends PrismaClient {
         guildId: command_data.guild ? command_data.guildId : 'global',
         name: command_data.name,
         enabled: command_data.defaultPermission,
-      }
+      },
     });
+    return entry;
   }
 
   async getCommand(command_name, command_location = 'global') {
-    return this.commands.findUnique({
+    let entry = await this.commands.findUnique({
       where: {
         name: command_name,
         guildId: command_location.toString(),
       },
     });
+    return entry;
   }
 
   async getCommandById(command_id) {
-    return this.commands.findUnique({
+    let entry = await this.commands.findUnique({
       where: {
         id: command_id.toString(),
       },
     });
+    return entry;
   }
 
   async getCommands(guild_id = 'global') {
-    return this.commands.findMany({
+    let entry = await this.commands.findMany({
       where: {
         guildId: guild_id.toString(),
       },
     });
+    return entry;
   }
 }
 
