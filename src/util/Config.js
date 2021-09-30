@@ -3,10 +3,12 @@
 class Config extends null {
   static createDefault() {
     return {
-      botDir: null,
-      commandsDir: null,
-      eventsDir: null,
-      interactionsDir: null,
+      directories: {
+        root: null,
+        commands: null,
+        events: null,
+        interactions: null,
+      },
       database: { 
         enabled: true, 
         options: 
