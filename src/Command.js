@@ -9,11 +9,11 @@ class Command {
     this.group = data.group;
     this.description = data.description;
     this.guilds = data.guilds ?? [];
-    this.permissions = { 
-      channel: data.permissions?.channel ?? [], 
-      member: data.permissions?.member ?? [] 
+    this.permissions = {
+      channel: data.permissions?.channel ?? [],
+      member: data.permissions?.member ?? [],
     };
-    this.arguments = data.arguments;
+    this.args = data.args;
     this.execute = data.execute;
     this.SlashCommand = data.SlashCommand;
     this.slashData = data.SlashCommand && {
