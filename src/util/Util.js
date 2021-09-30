@@ -7,9 +7,8 @@ class Util extends DiscordUtil {
     const matches = Object.keys(data)
       .map(key => matchingData[key] === data[key] || JSON.stringify(matchingData[key]) === JSON.stringify(data[key]))
       .filter(val => val === true);
-      
     return Boolean(matches.length === Object.keys(data).length);
-  };
+  }
 
   static inGuild(data) {
     return Boolean(data.guild && data.guild.id && data.member);
