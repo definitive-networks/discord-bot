@@ -1,9 +1,10 @@
 'use strict';
 
+const { existsSync } = require('fs');
 const path = require('path');
 const { Client } = require('discord.js');
-const { CommandManager, DatabaseManager } = require('./managers');
-const { Config, Util } = require('./util');
+const CommandManager = require('./managers/CommandManager');
+const { Config, Util, Validator } = require('./util');
 
 class BotClient extends Client {
   constructor(options = {}) {
@@ -11,32 +12,37 @@ class BotClient extends Client {
 
     this.config = Util.mergeDefault(Config.createDefault(), options);
 
-    if (this.config.botDir) {
-      if (!this.config.commandsDir) {
-        this.config.commandsDir = path.join(this.config.botDir, 'commands');
+    for (const [key, val] of Object.entries(this.config.directories)) {
+      if (key === 'root') {
+        if (!val || !existsSync(val)) throw new Error('DIRECTORY_INVALID', key);
+        continue;
       }
-      if (!this.config.eventsDir) {
-        this.config.eventsDir = path.join(this.config.botDir, 'events');
-      }
-      if (!this.config.interactionsDir) {
-        this.config.interactionsDir = path.join(this.config.interactionsDir, 'interactions');
+      this.config.directories[key] =
+        val === false
+          ? false
+          : path.join(
+              this.config.directories.root,
+              ...(typeof val === 'string' ? val.split('/').filter(data => data) : [key]),
+            );
+      if (val !== false && !existsSync(this.config.directories[key])) {
+        throw new Error('DIRECTORY_INVALID', key);
       }
     }
 
     if (this.config.database && this.config.database.enabled) {
       try {
         if (require.resolve('@prisma/client')) {
+          const { DatabaseManager } = require('./managers');
           this.database = new DatabaseManager(this, this.config.database.options);
         }
       } catch (error) {
-        console.error("Module not found: @prisma/client");
-        process.exit(error.code);
+        throw new Error(error);
       }
     }
 
     this.commands = new CommandManager(this);
 
-    this.on('error', err => console.log(err));
+    this.on('error', err => console.error(err));
 
     if (process.env.NODE_ENV === 'development') this.initDebugEvents();
 
@@ -58,7 +64,7 @@ class BotClient extends Client {
     return this.owners?.length && this.owners.includes(resolvedUser);
   }
 
-  initCommands(directory = this.config.commandsDir) {
+  initCommands(directory = this.config.directories.commands) {
     require('require-all')({
       dirname: directory,
       resolve: data => this.commands.create(data),
@@ -94,20 +100,14 @@ class BotClient extends Client {
     this.on('warn', info => console.log(info));
   }
 
-  initEvents(directory = this.config.eventsDir) {
+  initEvents(directory = this.config.directories.events) {
     require('require-all')({
       dirname: directory,
       resolve: data => {
         if (Validator.isEvent(data)) {
-          if (data.once) {
-            this.once(data.name, async (...args) => {
-              await data.execute(...args, this).catch(err => this.emit('error', err));
-            });
-          } else {
-            this.on(data.name, async (...args) => {
-              await data.execute(...args, this).catch(err => this.emit('error', err));
-            });
-          }
+          this[data.once ? 'once' : 'on'](data.name, async (...args) => {
+            await data.execute(...args, this).catch(err => this.emit('error', err));
+          });
           return this.emit('debug', `Event created: ${data.name}`);
         }
         return this.emit('warn', `Event failed to create: ${data}`)
@@ -121,13 +121,15 @@ class BotClient extends Client {
     });
   }
 
-  initInteractions(directory = this.config.interactionsDir) {
+  initInteractions(directory = this.config.directories.interactions) {
     require('require-all')({
       dirname: directory,
-      resolve: execute => {
-        this.on('interactionCreate', interaction => {
-          await execute(interaction, interaction.options, this);
-        });
+      resolve: data => {
+        if (Validator.isInteraction(data)) {
+          this.on('interactionCreate', async interaction => {
+            await data.execute(interaction, interaction.options, this);
+          });
+        }
       },
     });
   }
@@ -137,7 +139,7 @@ class BotClient extends Client {
   }
 
   async destroy() {
-    await super.destroy();
+    super.destroy();
     if (this.database) await this.database.$disconnect();
   }
 }
