@@ -54,11 +54,8 @@ class BotClient extends Client {
   }
 
   isOwner(user) {
-    const owners = this.owners;
-    if (!owners) return false;
     const resolvedUser = this.users.resolve(user);
-    if (!resolvedUser) return false;
-    return owners.includes(resolvedUser.id);
+    return this.owners?.length && this.owners.includes(resolvedUser);
   }
 
   initCommands(directory = this.config.commandsDir) {
