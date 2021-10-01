@@ -49,4 +49,8 @@ class BotCommand {
       defaultPermission: this.defaultPermission,
     };
   }
+
+  get isGlobal() {
+    return !this.guilds?.length || this.guilds.includes('global');
+  }
 }
