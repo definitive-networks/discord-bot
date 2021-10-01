@@ -75,8 +75,8 @@ class BotClient extends Client {
     this.on('applicationCommandCreate', command => {
       this.emit(
         'debug',
-        `Created "${command.name}" command ${
-          command.guildId ? `in ${command.guild.name} (${command.guildId})` : 'globally'
+        `Created "${command.name}" command (${command.id}) ${
+          command.guild ? `in ${command.guild.name} (${command.guildId})` : 'globally'
         }.`,
       );
     });
@@ -84,7 +84,7 @@ class BotClient extends Client {
       this.emit(
         'debug',
         `Deleted "${command.name}" command ${
-          command.guildId ? `in ${command.guild.name} (${command.guildId})` : 'globally'
+          command.guild ? `in ${command.guild.name} (${command.guildId})` : 'globally'
         }.`,
       );
     });
@@ -92,7 +92,7 @@ class BotClient extends Client {
       this.emit(
         'debug',
         `Updated "${command.name}" command ${
-          command.guildId ? `in ${command.guild.name} (${command.guildId})` : 'globally'
+          command.guild ? `in ${command.guild.name} (${command.guildId})` : 'globally'
         }.`,
       );
     });
@@ -110,7 +110,7 @@ class BotClient extends Client {
           });
           return this.emit('debug', `Event created: ${data.name}`);
         }
-        return this.emit('warn', `Event failed to create: ${data}`)
+        return this.emit('warn', `Event failed to create: ${data}`);
       },
     });
     this.once('ready', () => this.commands.sync().catch(err => this.emit('error', err)));
