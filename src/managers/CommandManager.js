@@ -12,39 +12,91 @@ class CommandManager extends BaseManager {
     this.registryCache = new Collection();
   }
 
-  findCommand(command_name, guildId = 'global') {
+  async findAppCommand(commandName, guildId) {
+    let commands, result;
+    if (!guildId) {
+      commands = await this.client.application.commands.fetch();
+      result = commands.find(cmd => cmd.name === commandName);
+    } else {
+      let guild = await this.client.guilds.fetch(guildId);
+      commands = await guild.commands.fetch();
+      result = commands.find(cmd => cmd.name === commandName);
+    }
+    return result ?? null;
     return this.cache.find(cmd => cmd.name === command_name && cmd.guildId === guildId) ?? null;
   }
 
   create(data) {
-    return Validator.isCommand(data) && this.registryCache.set(data.name, new Command(this.client, data));
+    return Validator.isCommand(data) && this.cache.set(data.name, new Command(this.client, data));
   }
 
-  async respond(event) {
-    const command = event.commandId && this.cache.get(event.commandId);
-    if (!command || event.partial || event.author.bot || event.author.bot !== this.client.user.id) return;
-    await command.execute(event, event.options, this.client);
+  async respond(interaction) {
+    const command = interaction.commandId && this.cache.find(cmd => {
+      return cmd.name === interaction.commandName 
+        && cmd.ids.includes(interaction.commandId)
+      }
+    );
+    const command = interaction.commandId && this.cache.get(interaction.commandId);
+    if (!command) return;
+    if (interaction.user.bot && interaction.user.id !== this.client.user.id) return;
+    if (interaction.guild && !interaction.guild.available) return;
+    await command.execute(interaction, interaction.options, this.client);
   }
 
   async registerCommands(type) {
     const registeredCommands = new Collection();
+    let registeredGlobalCommand, registeredGuildCommand;
     for (let cmd of this.registryCache.entries()) {
       if ((!type || type === 'global') && !cmd.guilds?.length) {
         // eslint-disable-next-line no-await-in-loop
-        const registeredGlobalCommand = await this.register(cmd);
+        registeredGlobalCommand = await this.register(cmd);
         if (registeredGlobalCommand) registeredCommands.set(registeredGlobalCommand.id, registeredGlobalCommand);
       }
       if ((!type || type === 'guilds') && cmd.guilds?.length) {
         // eslint-disable-next-line no-await-in-loop
         let guilds = await this.client.guilds.fetch();
         for (let guild of guilds.entries()) {
-          // eslint-disable-next-line no-await-in-loop
-          const registeredGuildCommand = await this.register(cmd, guild);
+          if (guild.available) {
+            // eslint-disable-next-line no-await-in-loop
+            registeredGuildCommand = await this.register(cmd, guild);
+          } else {
+            this.client.emit('debug', `Guild unavailable, unable to synchronize commands in: ${guild.id}`);
+          }
           if (registeredGuildCommand) registeredCommands.set(registeredGuildCommand.id, registeredGuildCommand);
         }
       }
     }
     return registeredCommands;
+  }
+
+  async register(command, guild) {
+    if ((guild && !command.guilds?.length) || (!guild && command.guilds?.length)) return null;
+    
+    let appCommand = await this.findAppCommand(command.name, guild?.id);
+    let storedCommandData = this.client.database?.commands && 
+      await this.client.database.getCommand(command.name, guild?.id);
+
+    if (!appCommand && storedCommandData) {
+      appCommand = await this.client.application.commands.fetch(storedCommandData.id, guild?.id);
+    }
+
+    let postedCommand;
+    if (!appCommand || appCommand && !Util.hasData(command, appCommand)) {
+      postedCommand = appCommand
+        ? await appCommand.edit(command.data)
+        : await this.client.application.commands.create(command.data, guild?.id);
+    }
+    const registeredCommand = postedCommand ?? appCommand;
+    if (postedCommand || appCommand && !command.ids.has(appCommand.id)) {
+      command.ids.set(registeredCommand.id, { 
+        id: registeredCommand.id,
+        guildId: registeredCommand.guild && registeredCommand.guildId
+      });
+      if (this.client.database?.commands && !Util.hasData(registeredCommand, storedCommandData)) {
+        await this.client.database.setCommand(registeredCommand);
+      }
+    }
+    return registeredCommand;
   }
 
   async register(registryCommand, guild) {
@@ -67,6 +119,7 @@ class CommandManager extends BaseManager {
     if (postedCommand || appCommand) {
       cacheCommand = new Command(this.client, registryCommand, postedCommand ?? appCommand);
       if (postedCommand || !this.cache.has(cacheCommand.id)) {
+        registryCommand.requiredPerms
         this.cache.set(cacheCommand.id, cacheCommand);
         if (this.client.database?.commands) {
           await this.client.database.setCommand(cacheCommand);
@@ -77,37 +130,44 @@ class CommandManager extends BaseManager {
   }
 
   async deleteInvalidCommands(type) {
-    const deletedCommands = new Collection();
+    const results = new Collection();
     let appCommands = new Collection();
     if (!type || type === 'global') {
-      appCommands = appCommands.concat(await this.client.application.commands.fetch());
+      const globalAppCommands = await this.client.applications.commands.fetch();
+      if (globalAppCommands.size) appCommands = new Collection(globalAppCommands);
     }
     if (!type || type === 'guilds') {
       let guilds = await this.client.guilds.fetch();
       if (guilds.size) {
-        guilds.forEach(guild => {
-          appCommands = appCommands.concat(guild.commands.fetch());
-        });
+        const guildAppCommands = await Promise.all(
+          guilds.map(guild => {
+            if (guild.available) return guild.commands.fetch();
+            this.client.emit('debug', `Guild unavailable, unable to delete commands in: "${guild.id}`);
+          })
+        );
+        if (guildAppCommands.length) {
+          appCommands = new Collection(appCommands, ...guildAppCommands);
+        }
       }
     }
     if (appCommands.size) {
-      for (let cmd of appCommands.entries()) {
-        // eslint-disable-next-line no-await-in-loop
-        let deletedCommand = await this.deleteInvalid(cmd);
-        if (deletedCommand) deletedCommands.set(deletedCommand.id, deletedCommand);
+      const deletedCommands = await Promise.all(appCommands.map(cmd => this.deleteInvalid(cmd)));
+      if (deletedCommands.length) {
+        deletedCommands.map(cmd => results.set(cmd.id, cmd));
       }
     }
-    return deletedCommands;
+    return results;
   }
 
   async deleteInvalid(appCommand) {
     let deletedCommand;
-    const cachedCommand = this.cache.get(appCommand.id);
+    const command = this.cache.find(cmd => cmd.ids.has(appCommand.id));
+    const location = command.locations.find(loc => loc.id === appCommand.id);
     switch (true) {
-      case !cachedCommand:
-      case appCommand.id !== cachedCommand.id:
-      case appCommand.guild && !cachedCommand.guild:
-      case !appCommand.guild && cachedCommand.guild: {
+      case !command || !location:
+      case appCommand.guild && appCommand.guildId !== location.guildId:
+      case appCommand.guild && location.guildId === 'global':
+      case !appCommand.guild && location.guildId !== 'global': {
         deletedCommand = await this.delete(appCommand);
       }
     }
@@ -121,25 +181,9 @@ class CommandManager extends BaseManager {
     };
   }
 
-  deleteFromRegistry(appCommand) {
-    const registryCommand = this.registryCache.find(cmd => {
-      switch (true) {
-        case cmd.name === appCommand.name:
-        case (!appCommand.guild && !cmd.guilds) ||
-          (appCommand.guild && cmd.guilds && cmd.guilds.includes(appCommand.guildId)): {
-          return true;
-        }
-        default: {
-          return false;
-        }
-      }
-    });
-    return registryCommand && this.registryCache.delete(appCommand.name);
-  }
-
   async delete(appCommand) {
-    this.deleteFromRegistry(appCommand);
-    this.cache.delete(appCommand.id);
+    const command = this.cache.find(cmd => cmd.ids?.has(appCommand));
+    if (command) command.ids.delete(appCommand.id);
     if (this.client.database?.commands) {
       await this.client.database.commands.delete({
         where: {
