@@ -2,9 +2,7 @@
 
 const Ajv = require('ajv');
 const Validator = new Ajv({
-  keywords: [
-    require('ajv-keywords/dist/definitions/transform')(),
-    require('ajv-keywords/dist/definitions/typeof')()],
+  keywords: [require('ajv-keywords/dist/definitions/transform')(), require('ajv-keywords/dist/definitions/typeof')()],
 });
 
 Validator.addSchema(
@@ -23,12 +21,32 @@ Validator.addSchema(
       permissions: {
         type: 'object',
         properties: {
-          channel: {
+          users: {
             type: 'array',
             uniqueItems: true,
             items: [{ type: 'string' }],
           },
+          roles: {
+            type: 'array',
+            uniqueItems: true,
+            items: [{ type: 'string' }],
+          },
+          channels: {
+            type: 'array',
+            uniqueItems: true,
+            items: [{ type: 'string' }],
+          },
+        },
+      },
+      requiredPerms: {
+        type: 'object',
+        properties: {
           member: {
+            type: 'array',
+            uniqueItems: true,
+            items: [{ type: 'string' }],
+          },
+          channel: {
             type: 'array',
             uniqueItems: true,
             items: [{ type: 'string' }],
