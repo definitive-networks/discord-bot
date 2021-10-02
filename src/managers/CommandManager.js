@@ -38,7 +38,7 @@ class CommandManager extends BaseManager {
   }
 
   async registerCommand(command) {
-    
+
   }
 
   async registerCommands(commands) {
@@ -59,8 +59,12 @@ class CommandManager extends BaseManager {
     return registeredCommands;
   }
 
-  async registerCommandsIn(options) {
-
+  registerCommandsIn(directory) {
+    const commands = [];
+    require('require-all')({
+      dirname: directory,
+      resolve: data => commands.push(data),
+    });
     return this.registerCommands(commands);
   }
 
