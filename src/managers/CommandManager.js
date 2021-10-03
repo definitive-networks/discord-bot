@@ -30,15 +30,37 @@ class CommandManager extends BaseManager {
   }
 
   async respond(interaction) {
+    if (
+      interaction.user.bot &&
+      interaction.user.id !== this.client.user.id ||
+      interaction.guild &&
+      !interaction.guild.available
+    ) return;
+
     const command = interaction.commandId && this.cache.find(cmd => cmd.ids.has(interaction.commandId));
     if (!command) return;
-    if (interaction.user.bot && interaction.user.id !== this.client.user.id) return;
-    if (interaction.guild && !interaction.guild.available) return;
     await command.execute(interaction, interaction.options, this.client);
   }
 
   async registerCommand(command) {
+    if (!Validator.isCommand(command)) throw new Error('INVALID_COMMAND', command);
+    command = new Command(this.client, command);
 
+    if (
+      !command.guildIds ||
+      command.guildIds.includes('global') &&
+      this.cache.some(cmd => cmd.type === command.type && cmd.name === command.name)
+    ) {
+      return;
+    }
+
+    if (command.guildIds && !command.guildIds.includes('global') && this.cache.some(cmd =>
+      cmd.type === command.type && 
+      cmd.name === command.name &&
+      cmd.guildIds && 
+      !cmd.guildIds.includes('global') && 
+      cmd.guildIds.map(gid => gid !== 'global' && command.guildIds.includes(gid)).includes(true)
+    ))
   }
 
   async registerCommands(commands) {
@@ -116,7 +138,7 @@ class CommandManager extends BaseManager {
     }
     const registeredCommand = postedCommand ?? appCommand;
     if (postedCommand || (appCommand && !command.ids.has(appCommand.id))) {
-      command.ids.set(registeredCommand.id, { 
+      command.ids.set(registeredCommand.id, {
         id: registeredCommand.id,
         guildId: registeredCommand.guild && registeredCommand.guildId
       });
