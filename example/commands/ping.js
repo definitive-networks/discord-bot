@@ -1,17 +1,11 @@
 module.exports = {
   name: 'ping',
-  description: "Ping the bot",
-  guildOnly: false,
-  permissions: {
+  description: 'Ping the bot',
+  guildIds: ['429077454636974090'],
+  requiredPermissions: {
     channel: ['VIEW_CHANNEL', 'SEND_MESSAGES'],
   },
-  aliases: ['ms','pong'],
-  execute(message, args, client) {
-    message.channel.send('Pong!');
+  execute: (interaction, client) => {
+    interaction.reply('Pong!');
   },
-  SlashCommand: {
-    execute(interaction, args, client) {
-      interaction.reply('Pong!');
-    }
-  }
 }
