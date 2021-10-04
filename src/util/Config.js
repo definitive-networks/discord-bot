@@ -9,8 +9,13 @@ class Config extends null {
         events: null,
         interactions: null,
       },
+      onReady: {
+        registerCommands: true,
+        sync: true,
+      },
+      unknownCommandResponse: true,
       database: {
-        enabled: true,
+        enabled: false,
         options:
           process.env.NODE_ENV === 'developement'
             ? {
@@ -28,8 +33,6 @@ class Config extends null {
       owners: [],
       intents: ['GUILDS', 'GUILD_MESSAGES', 'DIRECT_MESSAGES'],
       partials: ['CHANNEL'],
-      initCommands: true,
-      initEvents: true,
     };
   }
 }
