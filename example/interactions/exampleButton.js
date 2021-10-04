@@ -1,5 +1,6 @@
-module.exports = (interaction, options, client) => {
-  if (interaction.customId === 'example_button') {
+module.exports = {
+  customId: 'example_button',
+  execute: (interaction, client) =>{
     interaction.reply('You clicked the button!');
   }
 }
