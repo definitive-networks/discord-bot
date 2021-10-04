@@ -1,93 +1,71 @@
 'use strict';
 
-const Ajv = require('ajv');
-const Validator = new Ajv({
-  keywords: [require('ajv-keywords/dist/definitions/transform')(), require('ajv-keywords/dist/definitions/typeof')()],
+const Joi = require('joi');
+
+const commandSchema = Joi.object({
+  type: Joi.string().default('CHAT_INPUT').valid('CHAT_INPUT', 'USER', 'MESSAGE'),
+  name: Joi.string()
+    .min(1)
+    .max(32)
+    .required()
+    .when('type', {
+      is: 'USER' || 'MESSAGE',
+      then: Joi.string().pattern(/([\w](-| )?)*[\w]+/),
+      otherwise: Joi.string()
+        .lowercase()
+        .pattern(/[\w-]+/),
+    }),
+  description: Joi.string().when('type', {
+    is: 'USER' || 'MESSAGE',
+    then: Joi.string().allow('').valid(''),
+    otherwise: Joi.string().min(1).max(100),
+  }),
+  args: Joi.function() || Joi.array().max(25),
+  guildIds: Joi.string() || Joi.array().items(Joi.string()),
+  requiredPermissions: Joi.object({
+    member: Joi.array().items(Joi.string()),
+    channel: Joi.array().items(Joi.string()),
+  }),
+  throttler: Joi.object({
+    duration: Joi.number(),
+    usages: Joi.number(),
+  }),
+  deferEphemeral: Joi.boolean().default(false),
+  defaultPermission: Joi.boolean().default(true),
+  permissions: Joi.array().items(
+    Joi.object({
+      id: Joi.string().required(),
+      type: Joi.string().valid('ROLE', 'USER').required(),
+      permission: Joi.boolean().required(),
+    }),
+  ),
+  execute: Joi.function().required(),
+}).unknown(true);
+
+const eventSchema = Joi.object({
+  name: Joi.string().required(),
+  once: Joi.boolean(),
+  execute: Joi.function().required(),
 });
 
-Validator.addSchema(
-  {
-    type: 'object',
-    properties: {
-      name: { type: 'string', minLength: 1, maxLength: 32 },
-      description: { type: 'string', maxLength: 100 },
-      type: { type: 'string' },
-      guilds: {
-        type: 'array',
-        uniqueItems: true,
-        items: [{ type: 'string' }],
-      },
-      defaultPermission: { type: 'boolean' },
-      permissions: {
-        type: 'object',
-        properties: {
-          users: {
-            type: 'array',
-            uniqueItems: true,
-            items: [{ type: 'string' }],
-          },
-          roles: {
-            type: 'array',
-            uniqueItems: true,
-            items: [{ type: 'string' }],
-          },
-          channels: {
-            type: 'array',
-            uniqueItems: true,
-            items: [{ type: 'string' }],
-          },
-        },
-      },
-      requiredPerms: {
-        type: 'object',
-        properties: {
-          member: {
-            type: 'array',
-            uniqueItems: true,
-            items: [{ type: 'string' }],
-          },
-          channel: {
-            type: 'array',
-            uniqueItems: true,
-            items: [{ type: 'string' }],
-          },
-        },
-      },
-      execute: { typeof: 'function' },
-    },
-    required: ['name', 'execute'],
-    if: { properties: { type: { pattern: 'USER|MESSAGE' } } },
-    then: {
-      properties: {
-        name: { pattern: '([w](-| )?)*[w]+' },
-      },
-    },
-    else: {
-      properties: {
-        name: { transform: ['toLowerCase'], pattern: '[w-]+' },
-      },
-    },
-    additionalProperties: true,
-  },
-  'command',
-);
+const interactionSchema = Joi.object({
+  name: Joi.string(),
+  customId: Joi.string(),
+  execute: Joi.function().required(),
+});
 
-Validator.isCommand = Validator.getSchema('command');
-
-Validator.isEvent = data => {
-  switch (true) {
-    case data:
-    case data.name && typeof data.name === 'string':
-    case data.execute && typeof data.execute === 'function':
-    case !data.once || (data.once && typeof data.once === 'boolean'): {
-      return true;
-    }
-    default: {
-      return false;
-    }
+class Validator {
+  static isCommand(data) {
+    return commandSchema.validate(data);
   }
-};
 
-Validator.isInteraction = data => data?.execute && typeof data.execute === 'function';
+  static isEvent(data) {
+    return eventSchema.validate(data);
+  }
+
+  static isInteraction(data) {
+    return interactionSchema.validate(data);
+  }
+}
 
 module.exports = Validator;
