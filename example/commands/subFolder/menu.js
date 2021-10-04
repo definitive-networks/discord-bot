@@ -26,23 +26,13 @@ const row = new MessageActionRow()
 module.exports = {
   name: 'menu',
   description: 'Example select menu',
-  group: 'Examples',
-  permissions: {
+  requiredPermissions: {
     channel: ['VIEW_CHANNEL', 'SEND_MESSAGES'],
   },
-  aliases: ['select', 'sel'],
-  execute(message, args, client) {
-    message.channel.send({
+  execute: (interaction, client) => {
+    interaction.reply({
       content: 'You can find an example select menu below!', 
       components: [row]
     });
-  },
-  SlashCommand: {
-    async execute(interaction, args, client) {
-      await interaction.reply({
-        content: 'You can find an example select menu below!',
-        components: [row]
-      });
-    }
   }
 }
