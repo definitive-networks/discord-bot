@@ -10,23 +10,13 @@ const row = new MessageActionRow().addComponents(
 module.exports = {
   name: 'button',
   description: 'Example buttons',
-  group: 'Examples',
-  permissions: {
+  requiredPermissions: {
     channel: ['VIEW_CHANNEL', 'SEND_MESSAGES'],
   },
-  aliases: ['btn'],
-  execute(message, args, client) {
-    message.channel.send({
+  execute: (interaction, client) => {
+    interaction.reply({
       content: 'You can find an example button below!', 
       components: [row]
     });
-  },
-  SlashCommand: {
-    async execute(interaction, args, client) {
-      await interaction.reply({
-        content: 'You can find an example button below!',
-        components: [row]
-      });
-    }
   }
 }
