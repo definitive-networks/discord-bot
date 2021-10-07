@@ -9,6 +9,7 @@ class Config extends null {
         events: null,
         interactions: null,
       },
+      defaultCommands: true,
       onReady: {
         registerCommands: true,
         sync: true,
