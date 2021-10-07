@@ -3,9 +3,11 @@
 const { existsSync } = require('fs');
 const path = require('path');
 const { oneLine } = require('common-tags');
-const { Client } = require('discord.js');
+const { Client, Util } = require('discord.js');
+const commandsCommand = require('./commands/commands.js');
+const pingCommand = require('./commands/ping.js');
 const CommandManager = require('./managers/CommandManager');
-const { Config, Util, Validator } = require('./util');
+const { Config, Validator } = require('./util');
 
 class BotClient extends Client {
   constructor(options = {}) {
@@ -71,6 +73,12 @@ class BotClient extends Client {
 
     if (this.config.directories.commands) {
       this.once('ready', async () => {
+        if (this.config.defaultCommands) {
+          this.commands.registerMany([
+            ...((this.config.defaultCommands === true || this.config.defaultCommands.ping) && [pingCommand]),
+            ...((this.config.defaultCommands === true || this.config.defaultCommands.commands) && [commandsCommand]),
+          ]);
+        }
         if (this.config.onReady.registerCommands) {
           this.commands.registerFrom(this.config.directories.commands);
         }
@@ -141,6 +149,7 @@ class BotClient extends Client {
         if (!hasPermission || typeof hasPermission === 'string') {
           const data = { ...(typeof hasPermission === 'string' && { response: hasPermission }) };
           await command.onBlock(interaction, 'permission', data);
+          return;
         }
 
         const throttle = command.throttle(interaction.user.id);
@@ -148,10 +157,11 @@ class BotClient extends Client {
           const remaining = (throttle.start + command.throttler.duration * 1000 - Date.now()) / 1000;
           const data = { throttle, remaining };
           await command.onBlock(interaction, 'throttling', data);
+          return;
         }
 
         if (throttle) throttle.usages++;
-        await command.execute(interaction, this.client);
+        await command.execute(interaction, this);
       }
     });
   }
