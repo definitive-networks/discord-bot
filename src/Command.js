@@ -1,6 +1,6 @@
 'use strict';
 
-const { oneLine } = require('common-tags');
+const { oneLine, stripIndent } = require('common-tags');
 const { Validator } = require('./util');
 
 class Command {
@@ -10,13 +10,17 @@ class Command {
 
     const validator = Validator.isCommand(data);
     if (validator.error) {
-      throw new Error(`Invalid command object was provided: ${data}`, validator.error);
+      throw new Error(stripIndent`
+      Invalid command object was provided: ${data.name && `('${data.name}' command)`}
+        ${validator.error.details.map(detail => `${detail.message}\n`)}
+    `);
     }
 
     this.type = data.type || 'CHAT_INPUT';
     this.name = data.name;
     if (data.description) this.description = data.description;
-    this.args = typeof data.args === 'function' ? data.args(client) : data.args;
+    this.protected = data.protected || false;
+    this.args = data.args;
     if (data.guildIds) this.guildIds = typeof data.guildIds === 'string' ? [data.guildIds] : data.guildIds;
     this.requiredPermissions = data.requiredPermissions;
     this.throttler = data.throttler;
@@ -34,18 +38,21 @@ class Command {
     return `${this.type}:${prefix}:${this.name}`;
   }
 
+  get isGlobal() {
+    return !this.guildIds || (this.guildIds?.length && this.guildIds.includes('global'));
+  }
+
   hasPermission(interaction) {
     if (interaction.inGuild()) {
       if (this.requiredPermissions?.member) {
         if (
-          (this.requiredPermissions.member.includes('BOT_OWNER') && !this.client.isOwner(interaction.member.id)) ||
-          (this.requiredPermissions.member.includes('GUILD_OWNER') &&
-            interaction.member.id !== interaction.guild.ownerId)
+          (this.requiredPermissions.member.includes('BOT_OWNER') && !this.client.isOwner(interaction.user.id)) ||
+          (this.requiredPermissions.member.includes('GUILD_OWNER') && interaction.user.id !== interaction.guild.ownerId)
         ) {
           return `You're not authorized to use the \`${this.name}\` command.`;
         }
         const missing = interaction.member.permissions.missing(
-          this.requiredPermissions.filter(perm => !['BOT_OWNER', 'GUILD_OWNER'].includes(perm)),
+          this.requiredPermissions.member.filter(perm => !['BOT_OWNER', 'GUILD_OWNER'].includes(perm)),
         );
         if (missing.length > 0) {
           if (missing.length === 1) {
@@ -69,28 +76,72 @@ class Command {
           `;
         }
       }
+      const currentPermissions =
+        this.permissions && this.permissions[(interaction.inGuild() && interaction.guildId) || 'global'];
+      if (currentPermissions) {
+        const relevantPermissions = currentPermissions.filter(perm => !perm.permission);
+        if (relevantPermissions.some(perm => perm.type === 'CHANNEL' && perm.id === interaction.channelId)) {
+          return `The \`${this.name}\` command is disabled for this channel.`;
+        }
+        if (relevantPermissions.some(perm => perm.type === 'USER' && perm.id === interaction.user?.id)) {
+          return `You do not have permission to use the \`${this.name}\` command.`;
+        }
+        if (relevantPermissions.some(perm => perm.type === 'ROLE' && interaction.member?.roles?.cache.has(perm.id))) {
+          const blockedRoleNames = [];
+          relevantPermissions
+            .filter(perm => interaction.member.roles.cache.has(perm.id))
+            .forEach(perm => {
+              if (perm.type === 'ROLE') {
+                const permRole = interaction.member.roles.cache.get(perm.id);
+                if (permRole) blockedRoleNames.push(permRole.name);
+              }
+            });
+          return `The \`${this.name}\` command is disabled for the \`${blockedRoleNames.join(', ')}\` role${
+            blockedRoleNames.length > 0 && 's'
+          } in this guild.`;
+        }
+      }
     }
     return true;
+  }
+
+  updatePermissions(guildId, permissions) {
+    for (const permToAdd of permissions) {
+      const selPermIndex = this.permissions[guildId || 'global'].findIndex(perm => perm.id === permToAdd.id);
+      if (selPermIndex > -1) {
+        this.permissions[guildId || 'global'][selPermIndex] = permToAdd;
+      } else {
+        this.permissions[guildId || 'global'].push(permToAdd);
+      }
+    }
+    return this.permissions[guildId || 'global'];
   }
 
   async onBlock(interaction, reason, data) {
     switch (reason) {
       case 'permission': {
-        if (data.response) await interaction.reply(data.response, { ephemeral: true });
-        await interaction.reply(`You do not have permission to use the \`${this.name}\` command.`, { ephemeral: true });
+        if (data.response) {
+          await interaction.reply({ content: data.response, ephemeral: true });
+        } else {
+          await interaction.reply({
+            content: `You do not have permission to use the \`${this.name}\` command.`,
+            ephemeral: true,
+          });
+        }
         break;
       }
       case 'throttling': {
-        await interaction.reply(
-          `You must wait ${data.remaining.toFixed(1)} seconds to use the \`${this.name}\` command again.`, 
-          { ephemeral: true },
-        );
+        await interaction.reply({
+          content: `You must wait ${data.remaining.toFixed(1)} seconds to use the \`${this.name}\` command again.`,
+          ephemeral: true,
+        });
       }
     }
   }
 
+  // eslint-disable-next-line no-unused-vars
   async onError(interaction, error) {
-    
+    await interaction.reply({ content: 'An error occurred while running the command.', ephemeral: true });
   }
 
   // eslint-disable-next-line require-await
@@ -108,20 +159,22 @@ class Command {
         usages: 0,
         timeout: setTimeout(() => {
           this._throttles.delete(userId);
-        }, this.throttler.duration * 1000)
+        }, this.throttler.duration * 1000),
       };
       this._throttles.set(userId, throttle);
     }
     return throttle;
   }
 
-  toJSON() {
+  toJSON(guildId) {
     return this.type === 'CHAT_INPUT'
       ? {
           name: this.name,
           description: this.description || `${this.name.charAt(0).toUpperCase() + this.name.slice(1)} Command`,
           type: 'CHAT_INPUT',
-          ...(this.options && { options: this.args }),
+          ...(this.args && {
+            options: typeof this.args === 'function' ? this.args(this.client, guildId) : this.args,
+          }),
           defaultPermission: this.defaultPermission,
         }
       : {
