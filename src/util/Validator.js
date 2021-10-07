@@ -20,8 +20,8 @@ const commandSchema = Joi.object({
     then: Joi.string().allow('').valid(''),
     otherwise: Joi.string().min(1).max(100),
   }),
-  args: Joi.function() || Joi.array().max(25),
-  guildIds: Joi.string() || Joi.array().items(Joi.string()),
+  args: [Joi.function(), Joi.array().max(25)],
+  guildIds: [Joi.string(), Joi.array().items(Joi.string())],
   requiredPermissions: Joi.object({
     member: Joi.array().items(Joi.string()),
     channel: Joi.array().items(Joi.string()),
@@ -32,13 +32,7 @@ const commandSchema = Joi.object({
   }),
   deferEphemeral: Joi.boolean().default(false),
   defaultPermission: Joi.boolean().default(true),
-  permissions: Joi.array().items(
-    Joi.object({
-      id: Joi.string().required(),
-      type: Joi.string().valid('ROLE', 'USER').required(),
-      permission: Joi.boolean().required(),
-    }),
-  ),
+  permissions: Joi.object(),
   execute: Joi.function().required(),
 }).unknown(true);
 
