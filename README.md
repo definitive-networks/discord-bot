@@ -41,10 +41,10 @@ client.start(/*DISCORD BOT TOKEN*/);
 ```js
 // ./commands/ping.js
 module.exports = {
-  name: 'ping',
-  description: 'Ping the bot',
+  name: 'hello',
+  description: 'Say hi!',
   execute: (interaction, client) => {
-    interaction.reply(`Pong! \`${Date.now() - interaction.createdTimestamp}ms\``);
+    interaction.reply(`Hello, <@${interaction.user.id}>!`);
   }
 }
 ```
