@@ -220,6 +220,7 @@ class CommandManager extends BaseManager {
     const permissionPayloads = [];
 
     for (const [, command] of this.registry) {
+
       if (command.permissions) {
         for (const guildId in command.permissions) {
           const filteredPerms = command.permissions[guildId].filter(perm => perm.type !== 'CHANNEL');
@@ -230,6 +231,14 @@ class CommandManager extends BaseManager {
           permissionPayloads[guildId].push({
             id: commandId,
             permissions: filteredPerms,
+          });
+        }
+      } else {
+        const guilds = await this.client.guilds.fetch();
+        for (const [guildId, commandId] of command.ids) {
+          permissionPayloads[guildId].push({
+            id: commandId,
+            permissions: [],
           });
         }
       }
@@ -285,8 +294,8 @@ class CommandManager extends BaseManager {
 
       for (const [, appCommand] of appCommands) {
         if (options.syncPermissions) {
-          if (!permissionsPayload[appCommand.id]) permissionsPayload[appCommand.id] = {};
-          if (!permissionsPayload[appCommand.id][guildId]) permissionsPayload[appCommand.id][guildId] = [];
+          if (!permissionsPayload[guildId]) permissionsPayload[guildId] = {};
+          if (!permissionsPayload[guildId][appCommand.id]) permissionsPayload[guildId][appCommand.id] = [];
         }
         const command = this.registry.find(
           cmd =>
@@ -308,20 +317,18 @@ class CommandManager extends BaseManager {
           if (!options.syncPermissions) continue;
           if (guildId === 'global' && guilds.size) {
             guilds.forEach(async guld => {
-              const cmdGuildPerms = await appCommand.permissions.fetch({ guld });
+              const cmdGuildPerms = await appCommand.permissions.fetch({ guild: guld });
               if (!cmdGuildPerms.length) return;
-              if (!permissionsPayload[guld]) permissionsPayload[guld] = [];
-              permissionsPayload[guld].push({
-
-              });
-              if (!permissionsPayload[appCommand.id][guld]) permissionsPayload[appCommand.id][guld] = [];
-              permissionsPayload[appCommand.id][guld].push(...cmdGuildPerms);
+              if (!permissionsPayload[guld]) permissionsPayload[guld] = {};
+              if (!permissionsPayload[guld][appCommand.id]) permissionsPayload[guld][appCommand.id] = [];
+              permissionsPayload[guld][appCommand.id].push(...cmdGuildPerms);
             });
             continue;
           }
           // eslint-disable-next-line no-await-in-loop
           const cmdGuildPerms = await appCommand.permissions.fetch({ guild: guildId });
           if (!cmdGuildPerms.length) continue;
+          if (!permissionsPayload[guildId])
           permissionsPayload[appCommand.id][guildId].push(...cmdGuildPerms);
         } else if (options.deleteInvalid) {
           // eslint-disable-next-line no-await-in-loop
@@ -377,17 +384,17 @@ class CommandManager extends BaseManager {
             if (!options.syncPermissions) continue;
             if (guildId === 'global' && guilds.size) {
               guilds.forEach(guld => {
-                if (!permissionsPayload[guld]) permissionsPayload[guld] = [];
-                permissionsPayload[guld].push({
-                  commandId: newCommand.id,
+                if (!permissionsPayload[guld]) permissionsPayload[guld] = {};
+                if (!permissionsPayload[guld][newCommand.id]) permissionsPayload[guld][newCommand.id] = [];
+                permissionsPayload[guld][newCommand.id].push({
                   ...command.permissions[guildId],
                 });
               });
               continue;
             }
-            if (!permissionsPayload[guildId]) permissionsPayload[guildId] = [];
-            permissionsPayload[guildId].push({
-              commandId: newCommand.id,
+            if (!permissionsPayload[guildId]) permissionsPayload[guildId] = {};
+            if (!permissionsPayload[guildId][newCommand.id]) permissionsPayload[guildId][newCommand.id] = [];
+            permissionsPayload[guildId][newCommand.id].push({
               ...command.permissions[guildId],
             });
           }
@@ -395,9 +402,18 @@ class CommandManager extends BaseManager {
       }
 
       for (const permsGuildId in permissionsPayload) {
+        for (const commandId in permissionsPayload[permsGuildId]) {
+          
+          await this.api.permissions.set({ 
+            guild: permsGuildId,
+            fullPermission: permissionsPayload[permsGuildId][commandId],
+          });
+          permissionsPayload[permsGUildId][commandId]
+        }
         permissionsPayload[guildId].forEach(perm => {
           
         });
+        permissionsPayload[permsGuildId].filter(perm => perm.commandId )
         await this.api.permissions.set({ guild: permsGuildId, fullPermissions: })
       }
       // eslint-disable-next-line no-unused-vars
