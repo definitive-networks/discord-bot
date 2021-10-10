@@ -233,8 +233,7 @@ class CommandManager extends BaseManager {
             permissions: filteredPerms,
           });
         }
-      } else {
-        const guilds = await this.client.guilds.fetch();
+      } else if (command.ids.size) {
         for (const [guildId, commandId] of command.ids) {
           permissionPayloads[guildId].push({
             id: commandId,
@@ -276,8 +275,6 @@ class CommandManager extends BaseManager {
         if (command.guildIds?.length) command.guildIds.forEach(guildId => guildIds.add(guildId));
       }
     }
-    let guilds;
-    if (options.syncPermissions) guilds = await this.client.guilds.fetch();
     for (const guildId of guildIds) {
       // eslint-disable-next-line no-await-in-loop
       const guild = guildId !== 'global' && (await this.client.guilds.fetch(guildId));
@@ -290,13 +287,8 @@ class CommandManager extends BaseManager {
       const handledCommands = [];
       const deletedCommands = new Collection();
       const updatePayload = [];
-      const permissionsPayload = {};
 
       for (const [, appCommand] of appCommands) {
-        if (options.syncPermissions) {
-          if (!permissionsPayload[guildId]) permissionsPayload[guildId] = {};
-          if (!permissionsPayload[guildId][appCommand.id]) permissionsPayload[guildId][appCommand.id] = [];
-        }
         const command = this.registry.find(
           cmd =>
             !!(
@@ -314,22 +306,6 @@ class CommandManager extends BaseManager {
           });
           handledCommands.push(command.keyName);
           this.client.emit('debug', `Found existing ${appCommand.type} command: ${appCommand.name} (${appCommand.id})`);
-          if (!options.syncPermissions) continue;
-          if (guildId === 'global' && guilds.size) {
-            guilds.forEach(async guld => {
-              const cmdGuildPerms = await appCommand.permissions.fetch({ guild: guld });
-              if (!cmdGuildPerms.length) return;
-              if (!permissionsPayload[guld]) permissionsPayload[guld] = {};
-              if (!permissionsPayload[guld][appCommand.id]) permissionsPayload[guld][appCommand.id] = [];
-              permissionsPayload[guld][appCommand.id].push(...cmdGuildPerms);
-            });
-            continue;
-          }
-          // eslint-disable-next-line no-await-in-loop
-          const cmdGuildPerms = await appCommand.permissions.fetch({ guild: guildId });
-          if (!cmdGuildPerms.length) continue;
-          if (!permissionsPayload[guildId])
-          permissionsPayload[appCommand.id][guildId].push(...cmdGuildPerms);
         } else if (options.deleteInvalid) {
           // eslint-disable-next-line no-await-in-loop
           let deletedCommand = await appCommand.delete();
@@ -381,43 +357,9 @@ class CommandManager extends BaseManager {
               'debug',
               `Created new ${newCommand.type} command: ${newCommand.name} (${newCommand.type})`,
             );
-            if (!options.syncPermissions) continue;
-            if (guildId === 'global' && guilds.size) {
-              guilds.forEach(guld => {
-                if (!permissionsPayload[guld]) permissionsPayload[guld] = {};
-                if (!permissionsPayload[guld][newCommand.id]) permissionsPayload[guld][newCommand.id] = [];
-                permissionsPayload[guld][newCommand.id].push({
-                  ...command.permissions[guildId],
-                });
-              });
-              continue;
-            }
-            if (!permissionsPayload[guildId]) permissionsPayload[guildId] = {};
-            if (!permissionsPayload[guildId][newCommand.id]) permissionsPayload[guildId][newCommand.id] = [];
-            permissionsPayload[guildId][newCommand.id].push({
-              ...command.permissions[guildId],
-            });
           }
         }
       }
-
-      for (const permsGuildId in permissionsPayload) {
-        for (const commandId in permissionsPayload[permsGuildId]) {
-          
-          await this.api.permissions.set({ 
-            guild: permsGuildId,
-            fullPermission: permissionsPayload[permsGuildId][commandId],
-          });
-          permissionsPayload[permsGUildId][commandId]
-        }
-        permissionsPayload[guildId].forEach(perm => {
-          
-        });
-        permissionsPayload[permsGuildId].filter(perm => perm.commandId )
-        await this.api.permissions.set({ guild: permsGuildId, fullPermissions: })
-      }
-      // eslint-disable-next-line no-unused-vars
-      permissionsPayload[guildId].map(({ id: _, ...permObj }) => permObj);
 
       syncedCommands.push({
         location: guildId,
