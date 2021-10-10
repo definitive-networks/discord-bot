@@ -95,18 +95,13 @@ module.exports = {
             cmd.ids.has(!cmd.isGlobal ? interaction.guildId : 'global'),
         );
         if (!registryCommand) {
-          return interaction.reply({ content: 'Unable to find ID for selected command.', ephemeral: true });
+          return interaction.reply({ content: 'Unable to find the selected command.', ephemeral: true });
         }
         const commandId = registryCommand.ids.get(!registryCommand.isGlobal ? interaction.guildId : 'global');
 
         const shouldEnable = interaction.options.get('enable');
         const targetMentionable = interaction.options.get('target');
         const targetChannel = interaction.options.get('channel');
-
-        if (!registryCommand.permissions) registryCommand.permissions = {};
-        if (!registryCommand.permissions[interaction.inGuild() ? interaction.guildId : 'global']) {
-          registryCommand.permissions[interaction.inGuild() ? interaction.guildId : 'global'] = [];
-        }
 
         if (
           targetMentionable?.value &&
@@ -165,7 +160,7 @@ module.exports = {
           }
         } else if (targetChannel?.value && targetChannel.channel) {
           if (
-            registryCommand.permissions[interaction.inGuild() ? interaction.guildId : 'global'].some(
+            registryCommand.permissions[interaction.inGuild() ? interaction.guildId : 'global']?.some(
               perm =>
                 perm.type === 'CHANNEL' &&
                 perm.id === targetChannel.channel.id &&
