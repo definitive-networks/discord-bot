@@ -106,15 +106,19 @@ class Command {
   }
 
   updatePermissions(guildId, permissions) {
+    if (!permissions.length) return null;
+    if (!guildId) guildId = 'global';
+    if (!this.permissions) this.permissions = {};
+    if (!this.permissions[guildId]) this.permissions[guildId] = [];
     for (const permToAdd of permissions) {
-      const selPermIndex = this.permissions[guildId || 'global'].findIndex(perm => perm.id === permToAdd.id);
+      const selPermIndex = this.permissions[guildId].findIndex(perm => perm.id === permToAdd.id);
       if (selPermIndex > -1) {
-        this.permissions[guildId || 'global'][selPermIndex] = permToAdd;
+        this.permissions[guildId][selPermIndex] = permToAdd;
       } else {
-        this.permissions[guildId || 'global'].push(permToAdd);
+        this.permissions[guildId].push(permToAdd);
       }
     }
-    return this.permissions[guildId || 'global'];
+    return this.permissions[guildId];
   }
 
   async onBlock(interaction, reason, data) {
