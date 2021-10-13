@@ -97,7 +97,7 @@ class Command {
               }
             });
           return `The \`${this.name}\` command is disabled for the \`${blockedRoleNames.join(', ')}\` role${
-            blockedRoleNames.length > 0 && 's'
+            blockedRoleNames.length > 1 && 's'
           } in this guild.`;
         }
       }
@@ -107,7 +107,7 @@ class Command {
 
   updatePermissions(guildId, permissions) {
     if (!permissions.length) return null;
-    if (!guildId) guildId = 'global';
+    if (!guildId) guildId = 'all';
     if (!this.permissions) this.permissions = {};
     if (!this.permissions[guildId]) this.permissions[guildId] = [];
     for (const permToAdd of permissions) {
