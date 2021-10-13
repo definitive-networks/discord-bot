@@ -83,9 +83,11 @@ class CommandManager extends BaseManager {
 
   async syncGlobal(opts = { deleteInvalid: true }) {
     const appCommands = await this.api.fetch();
-    const handledCommands = [];
     const deletedCommands = new Collection();
+    const updatedCommands = new Collection();
+    const handledCommands = [];
     const updatePayload = [];
+    const deletedAppCommands = new Collection();
 
     for (const [, appCommand] of appCommands) {
       const commandKey = `${appCommand.type || 'CHAT_INPUT'}:global:${appCommand.name}`;
@@ -102,7 +104,7 @@ class CommandManager extends BaseManager {
         // eslint-disable-next-line no-await-in-loop
         let deletedCommand = await appCommand.delete();
         if (deletedCommand) {
-          deletedCommands.set(deletedCommand.id, deletedCommand);
+          deletedAppCommands.set(deletedCommand.id, deletedCommand);
           this.client.emit(
             'debug',
             `Deleted unknown ${deletedCommand.type} command: ${deletedCommand.name} (${deletedCommand.id})`,
@@ -112,79 +114,13 @@ class CommandManager extends BaseManager {
         updatePayload.push(appCommand);
       }
     }
+
+    if (deletedAppCommands.size) deletedCommands.set('global', deletedAppCommands);
 
     const unhandledCommands = this.registry.filter(cmd => !cmd.guildIds && !handledCommands.includes(cmd.keyName));
 
     for (const [, command] of unhandledCommands) {
       updatePayload.push({ ...command.toJSON() });
-    }
-
-    const commandsPayload = appCommands.map(cmd => cmd);
-
-    let updatedCommands = new Collection();
-    if (!isEqual(updatePayload, commandsPayload)) {
-      updatedCommands = await this.api.set(updatePayload);
-      const newCommands = updatedCommands.filter(newCmd => !appCommands.find(cmd => cmd.id === newCmd.id));
-      for (const [, newCommand] of newCommands) {
-        const command = unhandledCommands.find(cmd => cmd.name === newCommand.name);
-        if (command) {
-          command.ids.set('global', newCommand.id);
-          this.client.emit('debug', `Created new ${newCommand.type} command: ${newCommand.name} (${newCommand.id})`);
-        }
-      }
-    }
-
-    return {
-      updated: updatedCommands,
-      deleted: deletedCommands,
-    };
-  }
-
-  async syncGuild(guildId, opts = { deleteInvalid: true }) {
-    const appCommands = await this.api.fetch({ guildId });
-    const handledCommands = [];
-    const deletedCommands = new Collection();
-    const updatePayload = [];
-
-    for (const [, appCommand] of appCommands) {
-      const command = this.registry.find(
-        cmd =>
-          !!(
-            cmd.guildIds?.length &&
-            cmd.guildIds.includes(guildId) &&
-            cmd.name === appCommand.name &&
-            cmd.type === appCommand.type
-          ),
-      );
-      if (command) {
-        command.ids.set(guildId, appCommand.id);
-        updatePayload.push({
-          id: appCommand.id,
-          ...command.toJSON(guildId),
-        });
-        handledCommands.push(command.keyName);
-        this.client.emit('debug', `Found existing ${appCommand.type} command: ${appCommand.name} (${appCommand.id})`);
-      } else if (opts?.deleteInvalid) {
-        // eslint-disable-next-line no-await-in-loop
-        let deletedCommand = await appCommand.delete();
-        if (deletedCommand) {
-          deletedCommands.set(deletedCommand.id, deletedCommand);
-          this.client.emit(
-            'debug',
-            `Deleted unknown ${deletedCommand.type} command: ${deletedCommand.name} (${deletedCommand.id})`,
-          );
-        }
-      } else {
-        updatePayload.push(appCommand);
-      }
-    }
-
-    const unhandledCommands = this.registry.filter(
-      cmd => !!(cmd.guildIds && cmd.guildIds.includes(guildId) && !handledCommands.includes(cmd.keyName)),
-    );
-
-    for (const [, command] of unhandledCommands) {
-      updatePayload.push({ ...command.toJSON(guildId) });
     }
 
     const commandsPayload = appCommands.map(cmd => ({
@@ -195,17 +131,16 @@ class CommandManager extends BaseManager {
       ...(cmd.options?.length && { options: cmd.options }),
       defaultPermission: cmd.defaultPermission,
     }));
-    console.log(updatePayload, commandsPayload);
 
-    let updatedCommands = new Collection();
     if (!isEqual(updatePayload, commandsPayload)) {
-      updatedCommands = await this.api.set(updatePayload, guildId);
-      const newCommands = updatedCommands.filter(newCmd => !appCommands.find(cmd => cmd.id === newCmd.id));
-      for (const [, newCommand] of newCommands) {
-        const command = unhandledCommands.find(cmd => cmd.name === newCommand.name);
+      const updatedAppCommands = await this.api.set(updatePayload);
+      if (updatedAppCommands?.size) updatedCommands.set('global', updatedAppCommands);
+      const nuCommands = updatedAppCommands.filter(nuCmd => !appCommands.find(cmd => cmd.id === nuCmd.id));
+      for (const [, nuCommand] of nuCommands) {
+        const command = unhandledCommands.find(cmd => cmd.name === nuCommand.name && cmd.type === nuCommand.type);
         if (command) {
-          command.ids.set(guildId, newCommand.id);
-          this.client.emit('debug', `Created new ${newCommand.type} command: ${newCommand.name} (${newCommand.type})`);
+          command.ids.set('global', nuCommand.id);
+          this.client.emit('debug', `Created new ${nuCommand.type} command: ${nuCommand.name} (${nuCommand.id})`);
         }
       }
     }
@@ -216,101 +151,55 @@ class CommandManager extends BaseManager {
     };
   }
 
-  async syncPermissions() {
-    const permissionPayloads = [];
+  async syncGuild(guildId = 'all', opts = { deleteInvalid: true }) {
+    if (!guildId) return null;
+    const guildIds = new Set();
+    const deletedCommands = new Collection();
+    const updatedCommands = new Collection();
 
-    for (const [, command] of this.registry) {
-
-      if (command.permissions) {
-        for (const guildId in command.permissions) {
-          const filteredPerms = command.permissions[guildId].filter(perm => perm.type !== 'CHANNEL');
-          if (!filteredPerms.length) continue;
-          const commandId = command.ids.get(guildId) || command.ids.get('global');
-          if (!commandId) continue;
-          if (!(guildId in permissionPayloads)) permissionPayloads[guildId] = [];
-          permissionPayloads[guildId].push({
-            id: commandId,
-            permissions: filteredPerms,
-          });
-        }
-      } else if (command.ids.size) {
-        for (const [guildId, commandId] of command.ids) {
-          permissionPayloads[guildId].push({
-            id: commandId,
-            permissions: [],
-          });
-        }
-      }
+    if (guildId === 'all') {
+      const guilds = await this.client.guilds.fetch();
+      if (guilds.size) guilds.forEach(guild => guildIds.add(guild.id));
+    } else {
+      guildIds.add(opts.guildId);
     }
 
-    let syncedPermissions;
-    for (const guildId in permissionPayloads) {
+    for (const gid of guildIds) {
       // eslint-disable-next-line no-await-in-loop
-      syncedPermissions = await this.api.permissions.set({
-        ...(guildId !== 'global' && { guild: guildId }),
-        fullPermissions: permissionPayloads[guildId],
-      });
-      this.client.emit('debug', `Synced permissions for commands in: ${guildId}`);
-    }
-    return syncedPermissions;
-  }
-
-  async sync(opts) {
-    const options = Object.assign(
-      {
-        deleteInvalid: true,
-        syncGuilds: true,
-        syncPermissions: true,
-      },
-      opts,
-    );
-
-    let syncedGlobalCommands = await this.syncGlobal(options);
-    let syncedGuildCommands = [];
-    //
-    let syncedCommands = [];
-    const guildIds = new Set(['global']);
-    if (options.syncGuilds) {
-      for (const [, command] of this.registry) {
-        if (command.guildIds?.length) command.guildIds.forEach(guildId => guildIds.add(guildId));
-      }
-    }
-    for (const guildId of guildIds) {
-      // eslint-disable-next-line no-await-in-loop
-      const guild = guildId !== 'global' && (await this.client.guilds.fetch(guildId));
-      if (guildId !== 'global' && !guild?.available) {
-        this.client.emit('warn', `Guild unavailable, unable to post commands in : ${guildId}`);
+      const guild = await this.client.guilds.fetch(gid);
+      if (!guild?.available) {
+        this.client.emit('warn', `Guild unavailable, unable to post commands in : ${gid}`);
         continue;
       }
       // eslint-disable-next-line no-await-in-loop
-      const appCommands = await this.api.fetch(guildId !== 'global' && { guildId });
+      const appCommands = await this.api.fetch({ guildId: guild.id });
       const handledCommands = [];
-      const deletedCommands = new Collection();
       const updatePayload = [];
+      const deletedAppCommands = new Collection();
 
       for (const [, appCommand] of appCommands) {
         const command = this.registry.find(
           cmd =>
             !!(
-              ((cmd.guildIds?.length && cmd.guildIds.includes(guildId)) ||
-                (guildId === 'global' && !cmd.guildIds?.length)) &&
+              cmd.guildIds?.length &&
+              (cmd.guildIds.includes(guild.id) || cmd.guildIds.includes('all')) &&
               cmd.name === appCommand.name &&
               cmd.type === appCommand.type
             ),
         );
         if (command) {
-          command.ids.set(guildId, appCommand.id);
+          command.ids.set(guild.id, appCommand.id);
           updatePayload.push({
             id: appCommand.id,
-            ...command.toJSON(guildId !== 'global' && guildId),
+            ...command.toJSON(guild.id),
           });
           handledCommands.push(command.keyName);
           this.client.emit('debug', `Found existing ${appCommand.type} command: ${appCommand.name} (${appCommand.id})`);
-        } else if (options.deleteInvalid) {
+        } else if (opts?.deleteInvalid) {
           // eslint-disable-next-line no-await-in-loop
           let deletedCommand = await appCommand.delete();
           if (deletedCommand) {
-            deletedCommands.set(deletedCommand.id, deletedCommand);
+            deletedAppCommands.set(deletedCommand.id, deletedCommand);
             this.client.emit(
               'debug',
               `Deleted unknown ${deletedCommand.type} command: ${deletedCommand.name} (${deletedCommand.id})`,
@@ -321,17 +210,19 @@ class CommandManager extends BaseManager {
         }
       }
 
+      if (deletedAppCommands.size) deletedCommands.set(guild.id, deletedAppCommands);
+
       const unhandledCommands = this.registry.filter(
         cmd =>
           !!(
-            ((cmd.guildIds?.length && cmd.guildIds.includes(guildId)) ||
-              (guildId === 'global' && !cmd.guildIds?.length)) &&
+            cmd.guildIds?.length &&
+            (cmd.guildIds.includes(guild.id) || cmd.guildIds.includes('all')) &&
             !handledCommands.includes(cmd.keyName)
           ),
       );
 
       for (const [, command] of unhandledCommands) {
-        updatePayload.push({ ...command.toJSON(guildId !== 'global' && guildId) });
+        updatePayload.push({ ...command.toJSON(guild.id) });
       }
 
       const commandsPayload = appCommands.map(cmd => ({
@@ -342,62 +233,109 @@ class CommandManager extends BaseManager {
         ...(cmd.options?.length && { options: cmd.options }),
         defaultPermission: cmd.defaultPermission,
       }));
-      console.log(updatePayload, commandsPayload);
-
-      let updatedCommands = new Collection();
       if (!isEqual(updatePayload, commandsPayload)) {
         // eslint-disable-next-line no-await-in-loop
-        updatedCommands = await this.api.set(updatePayload, guildId !== 'global' && guildId);
-        const newCommands = updatedCommands.filter(newCmd => !appCommands.find(cmd => cmd.id === newCmd.id));
-        for (const [, newCommand] of newCommands) {
-          const command = unhandledCommands.find(cmd => cmd.name === newCommand.name && cmd.type === newCommand.type);
+        const updatedAppCommands = await this.api.set(updatePayload, guild.id);
+        if (updatedAppCommands?.size) updatedCommands.set(guild.id, updatedAppCommands);
+        const nuCommands = updatedAppCommands.filter(nuCmd => !appCommands.find(cmd => cmd.id === nuCmd.id));
+        for (const [, nuCommand] of nuCommands) {
+          const command = unhandledCommands.find(cmd => cmd.name === nuCommand.name && cmd.type === nuCommand.type);
           if (command) {
-            command.ids.set(guildId, newCommand.id);
-            this.client.emit(
-              'debug',
-              `Created new ${newCommand.type} command: ${newCommand.name} (${newCommand.type})`,
-            );
+            command.ids.set(guild.id, nuCommand.id);
+            this.client.emit('debug', `Created new ${nuCommand.type} command: ${nuCommand.name} (${nuCommand.id})`);
           }
         }
-      }
-
-      syncedCommands.push({
-        location: guildId,
-        updated: updatedCommands,
-        deleted: deletedCommands,
-      });
-    }
-    //
-    if (options.syncGuilds) {
-      let guildIds = new Set();
-      for (const [, command] of this.registry) {
-        if (command.guildIds?.length) command.guildIds.forEach(guildId => guildIds.add(guildId));
-      }
-      for (const guildId of guildIds) {
-        // eslint-disable-next-line no-await-in-loop
-        const guild = await this.client.guilds.fetch(guildId);
-        if (guild?.available) {
-          // eslint-disable-next-line no-await-in-loop
-          const result = await this.syncGuild(guildId, options);
-          if (result) syncedGuildCommands.push(result);
-        } else {
-          this.client.emit('warn', `Guild unavailable, unable to post commands in: ${guildId}`);
-        }
-      }
-    }
-
-    let syncedPermissions;
-    if (options.syncPermissions) {
-      try {
-        syncedPermissions = await this.syncPermissions();
-      } catch (err) {
-        this.client.emit('error', err);
       }
     }
 
     return {
-      updatedCommands: new Collection(syncedGlobalCommands.updated, syncedGuildCommands.updated),
-      deletedCommands: new Collection(syncedGlobalCommands.deleted, syncedGuildCommands.deleted),
+      updated: updatedCommands,
+      deleted: deletedCommands,
+    };
+  }
+
+  async syncPermissions(guildId = 'all', opts = { syncDatabase: true }) {
+    if (!guildId) return null;
+    const permissionPayloads = [];
+    for (const [, command] of this.registry) {
+      for (const [gid, cid] of command.ids) {
+        if ((guildId !== 'all' && gid !== guildId) || gid === 'global') continue;
+        if (!permissionPayloads[gid]) permissionPayloads[gid] = [];
+        let updatePayload;
+        if (opts?.syncDatabase && this.client.database) {
+          updatePayload = this.client.database.getCommandPermissions(gid, cid);
+        }
+        if (updatePayload?.length || (command.permissions && command.permissions[gid]?.length)) {
+          updatePayload = (updatePayload?.length && updatePayload) || command.permissions[gid];
+        }
+        if (updatePayload?.length) command.permissions[gid] = updatePayload;
+        permissionPayloads[gid].push({
+          id: cid,
+          permissions: (updatePayload?.length && updatePayload.filter(perm => perm.type !== 'CHANNEL')) || [],
+        });
+      }
+    }
+
+    let syncedPermissions;
+    for (const permGuildId in permissionPayloads) {
+      // eslint-disable-next-line no-await-in-loop
+      let currentGuildPerms = (await this.api.permissions.fetch({ guild: permGuildId })) || {};
+      if (currentGuildPerms?.constructor?.name === 'Collection') {
+        currentGuildPerms = Object.fromEntries(currentGuildPerms);
+      }
+      if (
+        (!Object.keys(currentGuildPerms)?.length &&
+          permissionPayloads[permGuildId].every(cmd => !cmd.permissions.length)) ||
+        isEqual(currentGuildPerms, permissionPayloads[permGuildId])
+      ) {
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      syncedPermissions = await this.api.permissions.set({
+        guild: permGuildId,
+        fullPermissions: permissionPayloads[permGuildId],
+      });
+      this.client.emit('debug', `Synced permissions for commands in: ${permGuildId}`);
+    }
+    return syncedPermissions;
+  }
+
+  async sync(opts) {
+    const options = Object.assign(
+      {
+        deleteInvalid: true,
+        syncDatabase: true,
+        syncGlobal: true,
+        syncGuilds: true,
+        syncPermissions: true,
+      },
+      opts,
+    );
+
+    let syncedGlobalCommands, syncedGuildCommands, syncedPermissions;
+    try {
+      if (options.syncGlobal) {
+        syncedGlobalCommands = await this.syncGlobal(options);
+      }
+      if (options.syncGuilds) {
+        syncedGuildCommands = await this.syncGuild('all', options);
+      }
+      if (options.syncPermissions) {
+        syncedPermissions = await this.syncPermissions('all', options);
+      }
+    } catch (err) {
+      this.client.emit('error', err);
+    }
+
+    return {
+      updatedCommands: new Collection(
+        syncedGlobalCommands?.updated?.size ? syncedGlobalCommands.updated : '',
+        syncedGuildCommands?.updated?.size ? syncedGuildCommands.updated : '',
+      ),
+      deletedCommands: new Collection(
+        syncedGlobalCommands?.deleted?.size ? syncedGlobalCommands.deleted : '',
+        syncedGuildCommands?.deleted?.size ? syncedGuildCommands.deleted : '',
+      ),
       permissions: syncedPermissions,
     };
   }
@@ -407,8 +345,9 @@ class CommandManager extends BaseManager {
       return this.registry.find(
         cmd =>
           !!(
-            cmd.guildIds?.length &&
-            cmd.guildIds.includes(interaction.guildId) &&
+            ((cmd.ids.get(interaction.guildId) || cmd.ids.get('global')) === interaction.commandId ||
+              (cmd.guildIds?.length && (cmd.guildIds.includes(interaction.guildId) || cmd.guildIds.includes('all'))) ||
+              !cmd.guildIds) &&
             cmd.name === interaction.commandName &&
             cmd.type === interaction.command.type
           ),
