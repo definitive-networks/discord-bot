@@ -4,7 +4,7 @@ const { existsSync } = require('fs');
 const path = require('path');
 const { oneLine } = require('common-tags');
 const { Client, Util } = require('discord.js');
-const commandsCommand = require('./commands/commands.js');
+const permissionsCommand = require('./commands/permissions.js');
 const pingCommand = require('./commands/ping.js');
 const CommandManager = require('./managers/CommandManager');
 const { Config, Validator } = require('./util');
@@ -76,7 +76,9 @@ class BotClient extends Client {
         if (this.config.defaultCommands) {
           this.commands.registerMany([
             ...((this.config.defaultCommands === true || this.config.defaultCommands.ping) && [pingCommand]),
-            ...((this.config.defaultCommands === true || this.config.defaultCommands.commands) && [commandsCommand]),
+            ...((this.config.defaultCommands === true || this.config.defaultCommands.permissions) && [
+              permissionsCommand,
+            ]),
           ]);
         }
         if (this.config.onReady.registerCommands) {
