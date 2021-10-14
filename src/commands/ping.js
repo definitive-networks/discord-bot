@@ -5,7 +5,7 @@ const { oneLine } = require('common-tags');
 module.exports = {
   name: 'ping',
   description: "Check the bot's ping to the Discord server.",
-  guildIds: ['429077454636974090'],
+  // guildIds: ['all'],
   requiredPermissions: {
     channel: ['VIEW_CHANNEL', 'SEND_MESSAGES'],
   },
