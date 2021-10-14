@@ -84,6 +84,11 @@ class BotClient extends Client {
         }
         if (this.config.onReady.sync) await this.commands.sync();
       });
+
+      this.on('guildCreate', async guild => {
+        await this.commands.syncGuild(guild.id);
+        await this.commands.syncPermissions(guild.id);
+      });
     }
 
     if (this.config.directories.interactions) {
