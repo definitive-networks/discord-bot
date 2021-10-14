@@ -3,7 +3,7 @@ const DiscordBot = require('../src');
 
 const client = new DiscordBot({
   directories: { root: path.resolve(__dirname) },
-  owners: ['429077454636974090'],
+  owners: ['253283640920768513'],
   intents: ['GUILDS', 'GUILD_MESSAGES', 'DIRECT_MESSAGES'],
   partials: ['CHANNEL'],
   presence: {
