@@ -10,6 +10,7 @@ const row = new MessageActionRow().addComponents(
 module.exports = {
   name: 'button',
   description: 'Example buttons',
+  guildIds: ['all'],
   requiredPermissions: {
     channel: ['VIEW_CHANNEL', 'SEND_MESSAGES'],
   },
