@@ -26,6 +26,7 @@ const row = new MessageActionRow()
 module.exports = {
   name: 'menu',
   description: 'Example select menu',
+  guildIds: ['all'],
   requiredPermissions: {
     channel: ['VIEW_CHANNEL', 'SEND_MESSAGES'],
   },
