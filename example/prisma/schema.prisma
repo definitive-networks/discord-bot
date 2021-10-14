@@ -22,6 +22,7 @@ model Command {
   id        String  @id
   guildId   String
   name      String
+  type      String
   enabled   Boolean
   allowList String
   blockList String
