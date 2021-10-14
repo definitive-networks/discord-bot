@@ -4,7 +4,6 @@ const { stripIndent } = require('common-tags');
 const { BaseManager, Collection } = require('discord.js');
 const isEqual = require('lodash.isequal');
 const Command = require('../Command');
-const { description } = require('../commands/commands');
 const { Validator } = require('../util');
 
 class CommandManager extends BaseManager {
