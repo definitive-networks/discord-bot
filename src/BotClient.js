@@ -51,19 +51,32 @@ class BotClient extends Client {
       this.on('error', err => console.error(err));
       this.on('debug', message => console.log(message));
       this.on('warn', info => console.log(info));
-      this.on('applicationCommandCreate', cmd => {
+      this.on('applicationCommandCreate', async cmd => {
+        if (this.database && this.commands.hasCommand(cmd)) {
+          await this.database.setCommand(cmd);
+        }
         this.emit(
           'debug',
           `Created "${cmd.name}" command ${cmd.guild ? `in ${cmd.guild.name} (${cmd.guildId})` : 'globally'}.`,
         );
       });
       this.on('applicationCommandDelete', cmd => {
+        if (this.database) {
+          await this.database.commands.delete({
+            where: {
+              id: cmd.id,
+            }
+          });
+        }
         this.emit(
           'debug',
           `Deleted "${cmd.name}" command ${cmd.guild ? `in ${cmd.guild.name} (${cmd.guildId})` : 'globally'}.`,
         );
       });
       this.on('applicationCommandUpdate', ({ newCommand: cmd }) => {
+        if (this.database && this.commands.hasCommand(cmd)) {
+          await this.database.setCommand(cmd);
+        }
         this.emit(
           'debug',
           `Updated "${cmd.name}" command ${cmd.guild ? `in ${cmd.guild.name} (${cmd.guildId})` : 'globally'}.`,
