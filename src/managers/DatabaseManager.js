@@ -15,7 +15,7 @@ class DatabaseManager extends PrismaClient {
   }
 
   async getUser(user_id, createUnknown = false) {
-    let entry = await this.users.findUnique({
+    const entry = await this.users.findUnique({
       where: {
         id: user_id.toString(),
       },
@@ -31,7 +31,7 @@ class DatabaseManager extends PrismaClient {
   }
 
   async getGuild(guild_id, createUnknown = false) {
-    let entry = await this.guilds.findUnique({
+    const entry = await this.guilds.findUnique({
       where: {
         id: guild_id.toString(),
       },
@@ -47,7 +47,7 @@ class DatabaseManager extends PrismaClient {
   }
 
   async setCommand(command_data) {
-    let entry = await this.commands.upsert({
+    const entry = await this.commands.upsert({
       where: { id: command_data.id },
       update: {
         guildId: command_data.guild ? command_data.guildId : 'global',
@@ -63,30 +63,44 @@ class DatabaseManager extends PrismaClient {
     return entry;
   }
 
-  async getCommand(command_name, command_location = 'global') {
-    let entry = await this.commands.findUnique({
+  async getCommand(name, guildId = 'global', type = 'CHAT_INPUT') {
+    if (!name) return null;
+    const entry = await this.commands.findUnique({
       where: {
-        name: command_name,
-        guildId: command_location.toString(),
+        name,
+        guildId,
+        type,
       },
     });
     return entry;
   }
 
-  async getCommandById(command_id) {
-    let entry = await this.commands.findUnique({
+  async getCommandById(commandId) {
+    if (!commandId) return null;
+    const entry = await this.commands.findUnique({
       where: {
-        id: command_id.toString(),
+        id: commandId,
       },
     });
     return entry;
   }
 
-  async getCommands(guild_id = 'global') {
-    let entry = await this.commands.findMany({
+  async getCommands(guildId) {
+    const entry = await this.commands.findMany(...(guildId && {
       where: {
-        guildId: guild_id.toString(),
+        guildId,
       },
+    }));
+    return entry;
+  }
+
+  async getCommandPermissions(guildId, commandId) {
+    if (!guildId || !commandId) return null;
+    const entry = await this.commands.findUnique({
+      where: {
+        id: commandId,
+        guildId,
+      }
     });
     return entry;
   }
