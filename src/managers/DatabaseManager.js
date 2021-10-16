@@ -14,51 +14,48 @@ class DatabaseManager extends PrismaClient {
     this.$on('warn', info => this.manager.emit('warn', info));
   }
 
-  async getUser(user_id, createUnknown = false) {
-    const entry = await this.users.findUnique({
+  async getUser(userId, createUnknown = false) {
+    let entry = await this.users.findUnique({
       where: {
-        id: user_id.toString(),
+        id: userId,
       },
     });
     if (!entry && createUnknown) {
       entry = await this.users.create({
         data: {
-          id: user_id,
+          id: userId,
         },
       });
     }
     return entry;
   }
 
-  async getGuild(guild_id, createUnknown = false) {
-    const entry = await this.guilds.findUnique({
+  async getGuild(guildId, createUnknown = false) {
+    let entry = await this.guilds.findUnique({
       where: {
-        id: guild_id.toString(),
+        id: guildId,
       },
     });
     if (!entry && createUnknown) {
       entry = await this.guilds.create({
         data: {
-          id: guild_id,
+          id: guildId,
         },
       });
     }
     return entry;
   }
 
-  async setCommand(command_data) {
+  async setCommand(data) {
+    const commandData = {
+      guildId: data.guild ? data.guildId : 'global',
+      name: data.name,
+      enabled: data.defaultPermission,
+    };
     const entry = await this.commands.upsert({
-      where: { id: command_data.id },
-      update: {
-        guildId: command_data.guild ? command_data.guildId : 'global',
-        name: command_data.name,
-        enabled: command_data.defaultPermission,
-      },
-      create: {
-        guildId: command_data.guild ? command_data.guildId : 'global',
-        name: command_data.name,
-        enabled: command_data.defaultPermission,
-      },
+      where: { id: data.id },
+      update: commandData,
+      create: commandData,
     });
     return entry;
   }
@@ -70,16 +67,6 @@ class DatabaseManager extends PrismaClient {
         name,
         guildId,
         type,
-      },
-    });
-    return entry;
-  }
-
-  async getCommandById(commandId) {
-    if (!commandId) return null;
-    const entry = await this.commands.findUnique({
-      where: {
-        id: commandId,
       },
     });
     return entry;
@@ -100,9 +87,12 @@ class DatabaseManager extends PrismaClient {
       where: {
         id: commandId,
         guildId,
-      }
+      },
+      select: {
+        permissions: true,
+      },
     });
-    return entry;
+    return entry?.permissions && JSON.parse(entry.permissions);
   }
 }
 
