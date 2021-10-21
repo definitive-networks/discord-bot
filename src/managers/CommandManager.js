@@ -253,7 +253,7 @@ class CommandManager extends BaseManager {
     };
   }
 
-  async syncPermissions(guildId = 'all', opts = { syncDatabase: true }) {
+  async syncPermissions(guildId = 'all') {
     if (!guildId) return null;
     const permissionPayloads = [];
     for (const [, command] of this.registry) {
@@ -261,9 +261,6 @@ class CommandManager extends BaseManager {
         if ((guildId !== 'all' && gid !== guildId) || gid === 'global') continue;
         if (!permissionPayloads[gid]) permissionPayloads[gid] = [];
         let updatePayload;
-        if (opts?.syncDatabase && this.client.database) {
-          updatePayload = this.client.database.getCommandPermissions(gid, cid);
-        }
         if (updatePayload?.length || (command.permissions && command.permissions[gid]?.length)) {
           updatePayload = (updatePayload?.length && updatePayload) || command.permissions[gid];
         }
@@ -303,7 +300,6 @@ class CommandManager extends BaseManager {
     const options = Object.assign(
       {
         deleteInvalid: true,
-        syncDatabase: true,
         syncGlobal: true,
         syncGuilds: true,
         syncPermissions: true,
