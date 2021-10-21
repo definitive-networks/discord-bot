@@ -51,7 +51,7 @@ class Command {
         ) {
           return `You're not authorized to use the \`${this.name}\` command.`;
         }
-        const missing = interaction.member.permissions.missing(
+        const missing = interaction.memberPermissions.missing(
           this.requiredPermissions.member.filter(perm => !['BOT_OWNER', 'GUILD_OWNER'].includes(perm)),
         );
         if (missing.length > 0) {
@@ -76,6 +76,10 @@ class Command {
           `;
         }
       }
+      const commandPermissions = interaction.command.permissions.fetch()
+        .then(perms => { return perms } )
+        .catch(err);
+
       const currentPermissions =
         this.permissions && this.permissions[(interaction.inGuild() && interaction.guildId) || 'global'];
       if (currentPermissions) {
