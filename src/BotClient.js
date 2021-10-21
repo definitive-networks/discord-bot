@@ -17,7 +17,7 @@ class BotClient extends Client {
 
     for (const [key, val] of Object.entries(this.config.directories)) {
       if (key === 'root') {
-        if (!val || !existsSync(val)) {
+        if (val?.length && !existsSync(val)) {
           throw new Error(`Invalid directory was provided for ${key}: ${val}`);
         }
         continue;
@@ -26,22 +26,11 @@ class BotClient extends Client {
         typeof val === 'boolean' && val === false
           ? val
           : path.join(
-              this.config.directories.root,
+              ...(this.config.directories.root && [this.config.directories.root]),
               ...(typeof val === 'string' && val.length ? val.split('/').filter(data => data) : [key]),
             );
       if (this.config.directories[key] && !existsSync(this.config.directories[key])) {
         throw new Error(`Invalid directory was provided for ${key}: ${this.config.directories[key]}`);
-      }
-    }
-
-    if (this.config.database && this.config.database.enabled) {
-      try {
-        if (require.resolve('@prisma/client')) {
-          const { DatabaseManager } = require('./managers/DatabaseManager');
-          this.database = new DatabaseManager(this, this.config.database.options);
-        }
-      } catch (err) {
-        throw new Error(err);
       }
     }
 
@@ -51,32 +40,19 @@ class BotClient extends Client {
       this.on('error', err => console.error(err));
       this.on('debug', message => console.log(message));
       this.on('warn', info => console.log(info));
-      this.on('applicationCommandCreate', async cmd => {
-        if (this.database && this.commands.hasCommand(cmd)) {
-          await this.database.setCommand(cmd);
-        }
+      this.on('applicationCommandCreate', cmd => {
         this.emit(
           'debug',
           `Created "${cmd.name}" command ${cmd.guild ? `in ${cmd.guild.name} (${cmd.guildId})` : 'globally'}.`,
         );
       });
       this.on('applicationCommandDelete', cmd => {
-        if (this.database) {
-          await this.database.commands.delete({
-            where: {
-              id: cmd.id,
-            }
-          });
-        }
         this.emit(
           'debug',
           `Deleted "${cmd.name}" command ${cmd.guild ? `in ${cmd.guild.name} (${cmd.guildId})` : 'globally'}.`,
         );
       });
       this.on('applicationCommandUpdate', ({ newCommand: cmd }) => {
-        if (this.database && this.commands.hasCommand(cmd)) {
-          await this.database.setCommand(cmd);
-        }
         this.emit(
           'debug',
           `Updated "${cmd.name}" command ${cmd.guild ? `in ${cmd.guild.name} (${cmd.guildId})` : 'globally'}.`,
