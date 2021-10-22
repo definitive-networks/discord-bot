@@ -6,7 +6,8 @@ const { Validator } = require('./util');
 class Command {
   constructor(client, data) {
     this.client = client;
-    this.manager = client.commands;
+    
+    this.manager = this.client.commands;
 
     const validator = Validator.isCommand(data);
     if (validator.error) {
@@ -16,21 +17,62 @@ class Command {
     `);
     }
 
-    this.type = data.type || 'CHAT_INPUT';
-    this.name = data.name;
-    if (data.description) this.description = data.description;
-    this.protected = data.protected || false;
-    this.args = data.args;
-    if (data.guildIds) this.guildIds = typeof data.guildIds === 'string' ? [data.guildIds] : data.guildIds;
+    this.protected = data.protected ?? false;
+
+    if (!Array.isArray(data.guildIds) && data.guildIds?.length) {
+      this.guildIds = [data.guildIds];
+    } else {
+      this.guildIds = data.guildIds;
+    }
+
+    this.guildIds = !Array.isArray(data.guildIds) && data.guildIds?.length ? [data.guildIds] : data.guildIds;
+
     this.requiredPermissions = data.requiredPermissions;
+
     this.throttler = data.throttler;
-    this.deferEphemeral = data.deferEphemeral || false;
-    this.defaultPermission = typeof data.defaultPermission === 'boolean' ? data.defaultPermission : true;
+
+    this.deferEphemeral = data.deferEphemeral ?? false;
+
     if (data.permissions) this.permissions = data.permissions;
+
     this.execute = data.execute;
 
     this.ids = new Map();
     this._throttles = new Map();
+
+    this._patch(data);
+  }
+
+  _patch(data) {
+    if ('name' in data) {
+      this.name = data.name;
+    }
+    if ('description' in data) {
+      this.description = data.description;
+    } else {
+      this.description ??= `${this.name.charAt(0).toUpperCase() + this.name.slice(1)} Command`;
+    }
+    if ('type' in data) {
+      this.type = data.type;
+    } else {
+      this.type ??= 'CHAT_INPUT';
+    }
+    if ('args' in data) {
+      this.args = data.args;
+    }
+    if ('defaultPermission' in data) {
+      this.defaultPermission = data.defaultPermission;
+    }
+    //
+    if ('protected' in data) {
+      this.protected = data.protected;
+    }
+    if ('guildIds' in data) {
+      this.guildIds = !Array.isArray(data.guildIds) ? [data.guildIds] : data.guildIds;
+    }
+    if ('permissions' in data) {
+      this.permissions = data.permissions;
+    }
   }
 
   get keyName() {
@@ -125,6 +167,12 @@ class Command {
     return this.permissions[guildId];
   }
 
+  update(guildId, data) {
+    if (data.name) this.name = data.name;
+    if (data.description) this.description = data.description;
+    if (this.ids.has(guildId)) await this.syncGuild(guildId);
+  }
+
   async onBlock(interaction, reason, data) {
     switch (reason) {
       case 'permission': {
@@ -172,25 +220,6 @@ class Command {
       this._throttles.set(userId, throttle);
     }
     return throttle;
-  }
-
-  toJSON(guildId) {
-    return this.type === 'CHAT_INPUT'
-      ? {
-          name: this.name,
-          description: this.description || `${this.name.charAt(0).toUpperCase() + this.name.slice(1)} Command`,
-          type: 'CHAT_INPUT',
-          ...(this.args && {
-            options: typeof this.args === 'function' ? this.args(this.client, guildId) : this.args,
-          }),
-          defaultPermission: this.defaultPermission,
-        }
-      : {
-          name: this.name,
-          description: '',
-          type: this.type,
-          defaultPermission: this.defaultPermission,
-        };
   }
 }
 
