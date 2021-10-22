@@ -226,6 +226,11 @@ class CommandManager extends BaseManager {
 
       const commandsPayload = appCommands.map(cmd => ApplicationCommandManager.transformCommand(cmd));
       if (!isEqual(updatePayload, commandsPayload)) {
+        //// edit later
+        if (commandId && this.registry.some(cmd => cmd.ids.has(commandId))) {
+          await this.api.edit(commandId, updatePayload[0], guild.id);
+        }
+        /////
         // eslint-disable-next-line no-await-in-loop
         const updatedAppCommands = await this.api.set(updatePayload, guild.id);
         if (updatedAppCommands?.size) updatedCommands.set(guild.id, updatedAppCommands);
