@@ -1,7 +1,7 @@
 'use strict';
 
 const { stripIndent } = require('common-tags');
-const { BaseManager, Collection } = require('discord.js');
+const { BaseManager, Collection, ApplicationCommandManager } = require('discord.js');
 const isEqual = require('lodash.isequal');
 const Command = require('../Command');
 const { Validator } = require('../util');
@@ -95,7 +95,7 @@ class CommandManager extends BaseManager {
         command.ids.set('global', appCommand.id);
         updatePayload.push({
           id: appCommand.id,
-          ...command.toJSON(),
+          ...this.constructor.transformCommand(command),
         });
         handledCommands.push(commandKey);
         this.client.emit('debug', `Found existing ${appCommand.type} command: ${appCommand.name} (${appCommand.id})`);
@@ -119,7 +119,7 @@ class CommandManager extends BaseManager {
     const unhandledCommands = this.registry.filter(cmd => !cmd.guildIds && !handledCommands.includes(cmd.keyName));
 
     for (const [, command] of unhandledCommands) {
-      updatePayload.push({ ...command.toJSON() });
+      updatePayload.push({ ...this.constructor.transformCommand(command) });
     }
 
     const commandsPayload = appCommands.map(cmd => ({
@@ -190,7 +190,7 @@ class CommandManager extends BaseManager {
           command.ids.set(guild.id, appCommand.id);
           updatePayload.push({
             id: appCommand.id,
-            ...command.toJSON(guild.id),
+            ...this.constructor.transformCommand(command, guild.id),
           });
           handledCommands.push(command.keyName);
           this.client.emit('debug', `Found existing ${appCommand.type} command: ${appCommand.name} (${appCommand.id})`);
@@ -221,17 +221,10 @@ class CommandManager extends BaseManager {
       );
 
       for (const [, command] of unhandledCommands) {
-        updatePayload.push({ ...command.toJSON(guild.id) });
+        updatePayload.push({ ...this.constructor.transformCommand(command, guild.id) });
       }
 
-      const commandsPayload = appCommands.map(cmd => ({
-        id: cmd.id,
-        name: cmd.name,
-        description: cmd.description,
-        type: cmd.type,
-        ...(cmd.options?.length && { options: cmd.options }),
-        defaultPermission: cmd.defaultPermission,
-      }));
+      const commandsPayload = appCommands.map(cmd => ApplicationCommandManager.transformCommand(cmd));
       if (!isEqual(updatePayload, commandsPayload)) {
         // eslint-disable-next-line no-await-in-loop
         const updatedAppCommands = await this.api.set(updatePayload, guild.id);
@@ -258,16 +251,15 @@ class CommandManager extends BaseManager {
     const permissionPayloads = [];
     for (const [, command] of this.registry) {
       for (const [gid, cid] of command.ids) {
-        if ((guildId !== 'all' && gid !== guildId) || gid === 'global') continue;
+        if (gid === 'global' || (guildId !== 'all' && gid !== guildId)) continue;
         if (!permissionPayloads[gid]) permissionPayloads[gid] = [];
-        let updatePayload;
-        if (updatePayload?.length || (command.permissions && command.permissions[gid]?.length)) {
-          updatePayload = (updatePayload?.length && updatePayload) || command.permissions[gid];
-        }
-        if (updatePayload?.length) command.permissions[gid] = updatePayload;
+
+        const updatePayload = command.permissions && command.permissions[gid]?.length &&
+          command.permissions[gid]?.filter( perm => perm.type !== 'CHANNEL');
+
         permissionPayloads[gid].push({
           id: cid,
-          permissions: (updatePayload?.length && updatePayload.filter(perm => perm.type !== 'CHANNEL')) || [],
+          permissions: updatePayload?.length ? updatePayload : [],
         });
       }
     }
@@ -350,6 +342,15 @@ class CommandManager extends BaseManager {
     } else {
       return this.registry.get(`${interaction.command.type}:global:${interaction.commandName}`);
     }
+  }
+
+  static transformCommand(data, guildId) {
+    if (data.type === 'CHAT_INPUT') {
+      data.options = typeof data.args === 'function' ? data.args(data.client, guildId) : data.args;
+    } else {
+      data.description = '';
+    }
+    return ApplicationCommandManager.transformCommand(data);
   }
 }
 
