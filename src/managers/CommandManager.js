@@ -3,7 +3,7 @@
 const { stripIndent } = require('common-tags');
 const { BaseManager, Collection, ApplicationCommandManager } = require('discord.js');
 const isEqual = require('lodash.isequal');
-const Command = require('../Command');
+const Command = require('../structures/Command');
 const { Validator } = require('../util');
 
 class CommandManager extends BaseManager {
@@ -17,58 +17,64 @@ class CommandManager extends BaseManager {
     return this.client.application.commands;
   }
 
-  register(command) {
-    const validator = Validator.isCommand(command);
-    if (validator.error) {
-      throw new Error(stripIndent`
-        Invalid command object was provided: ${command.name && `('${command.name}' command)`}
-          ${validator.error.details.map(detail => `${detail.message}\n`)}
-      `);
+  register(data = []) {
+    if (!Array.isArray(data)) data = [data];
+    return data.reduce(
+      (coll, command) => {
+        const prefix = Array.isArray(command.guildIds)
+          ? command.guildIds.join(',')
+          : command.guildIds;
+        return coll.set(
+          `${command.type ?? 'CHAT_INPUT'}:${prefix ?? 'global'}:${command.name}`,
+          this._add(command)
+        );
+      },
+      new Collection(),
+    );
+  }
+
+  _add(data, { keyName } = {}) {
+    const existing = this.registry.find(
+      cmd =>
+        cmd.keyName === keyName ??
+        cmd.name === data.name &&
+        cmd.type === (data.type || 'CHAT_INPUT') &&
+        (
+          cmd.isGlobal() && cmd.isGlobal(data) ||
+          !cmd.isGlobal() && !cmd.isGlobal(data) && 
+          (
+            cmd.guildIds.includes('all') ||
+            cmd.guildIds.map(gid => data.guildIds?.includes(gid)).includes(true)
+          )
+        )
+    );
+    if (existing) {
+      existing._patch(data);
+      return existing;
     }
+    const entry = data.constructor?.name === 'Command' ? data : new Command(this.client, data);
+    this.registry.set(keyName ?? entry.keyName, entry);
+    return entry;
+  }
 
-    command = new Command(this.client, command);
+  _update(data) {
 
-    if (this.registry.some(cmd => cmd.keyName === command.keyName)) {
-      throw new Error(`Command is already registered: ${command.name} (${command.keyName})`);
-    }
-
-    if (
-      command.guildIds &&
-      this.registry.some(
-        cmd =>
-          !!(
-            cmd.type === command.type &&
-            cmd.name === command.name &&
-            cmd.guildIds &&
-            cmd.guildIds.map(gid => command.guildIds.includes(gid)).includes(true)
-          ),
-      )
-    ) {
-      throw new Error(`Command has conflicting a guild ID: ${command.name}`);
-    }
-
-    this.registry.set(command.keyName, command);
-
-    return this.registry;
   }
 
   registerMany(commands) {
+
     if (!Array.isArray(commands)) return null;
     for (const command of commands) {
-      const validator = Validator.isCommand(command);
-      if (validator.error) {
-        this.client.emit(
-          'warn',
-          stripIndent`
-            Invalid command object was provided: ${command.name && `('${command.name}' command)`}
-              ${validator.error.details.map(detail => `${detail.message}\n`)}
-          `,
-        );
-        continue;
-      }
       this.register(command);
     }
     return this.registry;
+    ////
+    const data = await this.register(commands);
+    return data.reduce(
+      (coll, command) => coll.set(command.keyName, this._add(command)),
+      new Collection(),
+    );
+
   }
 
   registerFrom(directory) {
@@ -77,7 +83,49 @@ class CommandManager extends BaseManager {
       dirname: directory,
       resolve: data => commands.push(data),
     });
-    return this.registerMany(commands);
+    return this.register(commands);
+  }
+
+  registryPath({ id, name, type, guildId } = {}) {
+    let path = this.registry;
+    if (guildId) {
+      path = path.guilds()
+    }
+    let path = this.registry.find(cmd => cmd.ids.some(cid => cid === id));
+    if (name && type && guildId) {
+      path = path.
+    }
+
+    return id ? this.registry.find() : this.registry;
+
+
+
+
+    this.registry.guilds.get(guildId);
+    this.registry.globals.find(cmd => cmd.id === id);
+  }
+
+  fetch(id, { name, type, guildId, cache = true, force = false } = {}) {
+    if (typeof id === 'object') {
+      ({ name, type, guildId, cache = true } = id);
+    } else if (id || (guildId && name && type)) {
+      if (!force) {
+        const existing = this.registry.find(
+          cmd => 
+            cmd.ids.some(cid => cid === id) ||
+            (
+              (
+                guildId &&
+                cmd.name === name &&
+                cmd.type === type
+              )
+              ? cmd.guildIds.includes(guildId)
+              : cmd.isGlobal
+            )
+        );
+      }
+      const command = await this.registryPath({ id, name, type, guildId }).get();
+    }
   }
 
   async syncGlobal(opts = { deleteInvalid: true }) {
