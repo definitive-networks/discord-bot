@@ -52,7 +52,9 @@ class CommandManager extends BaseManager {
       existing._patch(data);
       return existing;
     }
-    const entry = data.constructor?.name === 'Command' ? data : new Command(this.client, data);
+    const entry = data.constructor?.name !== 'Command' 
+      ? new Command(this.client, data)
+      : data;
     this.registry.set(keyName ?? entry.keyName, entry);
     return entry;
   }

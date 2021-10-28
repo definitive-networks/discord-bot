@@ -86,17 +86,13 @@ class BotClient extends Client {
       require('require-all')({
         dirname: this.config.directories.interactions,
         resolve: data => {
-          const validator = Validator.isInteraction(data);
-          if (validator && !validator.error) {
-            this.on('interactionCreate', async interaction => {
-              if ('customId' in interaction && interaction.customId === (data.customId || data.name)) {
-                await data.execute(interaction, interaction.options, this);
-              }
-            });
-            this.emit('debug', `Interaction action created: ${data.customId || data.name}`);
-          } else {
-            this.emit('warn', `Invalid interaction action data: ${data}`);
+          if (!data.customId && data.name) data.customId = data.name;
+          if (data.customId && typeof data.customId !== 'string') {
+            throw new TypeError('Interaction name/customId must be a string.');
           }
+          if (typeof data.run !== 'function') throw new TypeError('Interaction run must be a function.');
+          this.registry.actions.set(data.customId, data);
+          this.emit('debug', `Interaction action registered: ${data.customId}`);
         },
       });
     }
@@ -105,75 +101,111 @@ class BotClient extends Client {
       require('require-all')({
         dirname: this.config.directories.events,
         resolve: data => {
-          const validator = Validator.isEvent(data);
-          if (validator && !validator.error) {
-            this[data.once ? 'once' : 'on'](data.name, async (...args) => {
-              await data.execute(...args, this);
-            });
-            this.emit('debug', `Event action created: ${data.name}`);
-          } else {
-            this.emit('warn', `Invalid event action data: ${data}`);
-          }
+          if (typeof data.name !== 'string') throw new TypeError('Event name must be a string.');
+          if (typeof data.run !== 'function') throw new TypeError('Event run must be a function.');
+          
+          this[Boolean(data.once) ? 'once' : 'on'](data.name, async (...args) => {
+            await data.run(...args, this);
+          });
+          this.emit('debug', `Event action registered: ${data.name}`);
         },
       });
     }
 
     this.on('interactionCreate', async interaction => {
-      if (interaction.isCommand() || interaction.isContextMenu()) {
-        const command = this.commands.getFromInteraction(interaction);
+      if (!interaction.isCommand() || !interaction.isContextMenu()) {
+        const action = await this.registry.actions.get(interaction.customId);
+        return action?.run(interaction, interaction.options, this);
+      } else {
+        const command = this.registry.getCommandFromInteraction(interaction);
 
-        if (!command) {
-          this.emit(
-            'debug',
-            `Unknown command requested: ${interaction.commandName} (${interaction.commandId}, ${
-              interaction.inGuild() ? `guild ${interaction.guildId}` : `user ${interaction.user.id}`
-            })`,
-          );
-          if (this.config.unknownCommandResponse) {
-            await interaction.reply({
-              content: oneLine`
-                This command no longer exists.
-                It should no longer show up within the hour if it has been deleted.
-              `,
-              ephemeral: true,
-            });
-          }
-          return;
+        if (command.guildOnly && !interaction.inGuild()) {
+          this.emit('commandBlock', this, 'guildOnly');
+          return command.onBlock(this, 'guildOnly');
+        }
+
+        if (command.nsfw && !interaction.channel.nsfw) {
+          this.emit('commandBlock', this, 'nsfw');
+          return command.onBlock(this, 'nsfw');
         }
 
         const hasPermission = command.hasPermission(interaction);
         if (!hasPermission || typeof hasPermission === 'string') {
-          const data = { ...(typeof hasPermission === 'string' && { response: hasPermission }) };
-          await command.onBlock(interaction, 'permission', data);
-          return;
+          const data = { response: typeof hasPermission === 'string' ? hasPermission : undefined };
+          this.emit('commandBlock', interaction, 'permission', data);
+          return command.onBlock(interaction, 'permission', data);
+        }
+
+        if (interaction.channel.type === 'text' && command.clientPermissions) {
+          const missing = interaction.channel.permissionsFor(this.user).missing(command.clientPermissions);
+          if (missing.length > 0) {
+            const data = { missing };
+            this.emit('commandBlock', this, 'clientPermission', data);
+            return command.onBlock(this, 'clientPermissions', data);
+          }
         }
 
         const throttle = command.throttle(interaction.user.id);
-        if (throttle && command.throttler && throttle.usages + 1 > command.throttler.usages) {
-          const remaining = (throttle.start + command.throttler.duration * 1000 - Date.now()) / 1000;
+        if (throttle && throttle.usages + 1 > command.throttler.usages) {
+          const remaining = (throttle.start + (command.throttler.duration * 1000) - Date.now()) / 1000;
           const data = { throttle, remaining };
-          await command.onBlock(interaction, 'throttling', data);
-          return;
+          this.emit('commandBlock', this, 'throttling', data);
+          return command.onBlock(this, 'throttling', data);
         }
 
         if (throttle) throttle.usages++;
-        await command.execute(interaction, this);
+        try {
+          this.client.emit('debug', `Running command ${command.type}:${command.name}.`);
+          const promise = command.run(interaction, this);
+
+          this.client.emit('commandRun', command, promise, interaction);
+          const retVal = await promise;
+          if (!(retVal instanceof Message || retVal instanceof Array || retVal === null || retVal === undefined)) {
+            throw new TypeError(oneLine`
+              Command ${command.name}'s run() resolved with an unknown type
+              (${retVal !== null ? retVal && retVal.constructor ? retVal.constructor.name : typeof retVal : null}).
+              Command run methods must return a Promise that resolve with a Message, Array of Messages, or null/undefined.
+            `);
+          }
+          return retVal;
+        } catch(err) {
+          this.emit('commandError', command, err, interaction);
+          if (err instanceof FriendlyError) {
+            return interaction.replied
+              ? interaction.followUp({ content: err.message, ephemeral: err.ephemeral })
+              : interaction.reply({ content: err.message, ephemeral: err.ephemeral });
+          } else {
+            return command.onError(err, interaction);
+          }
+        }
       }
     });
   }
 
   get owners() {
-    if (!this.config.owners || !this.config.owners.length) return null;
-    return typeof this.config.owners === 'string' ? [this.config.owners] : [...new Set(this.config.owners)];
+    if (!this.config.owners) return null;
+    if (typeof this.options.owners === 'string') return [this.users.cache.get(this.config.owners)];
+    const owners = [];
+    for (const owner of this.config.owners) owners.push(this.users.cache.get(owner));
+    return owners;
   }
 
   isOwner(user) {
-    const resolvedUser = this.users.resolve(user);
-    return this.owners?.length && this.owners.includes(resolvedUser.id);
+    if (!this.config.owners) return false;
+    user = this.users.resolve(user);
+    if (!user) throw new RangeError('Unable to resolve user.');
+    if (typeof this.config.owners === 'string') return user.id === this.config.owners;
+    if (this.config.owners instanceof Array) return this.config.owners.includes(user.id);
+    if (this.config.owners instanceof Set) return this.config.owners.has(user.id);
+    throw new RangeError('The client\'s "owner" option is an unknown value.');
   }
 
   start(bot_token) {
     this.login(bot_token ?? this.token);
+  }
+
+  async stop() {
+    await super.destroy();
   }
 }
 

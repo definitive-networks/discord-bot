@@ -5,9 +5,9 @@ const { Validator } = require('../util');
 
 class Command {
   constructor(client, data) {
-    this.client = client;
-    
-    this.manager = this.client?.commands;
+    this.constructor.validate(client, data);
+
+    Object.defineProperty(this, 'client', { value: client });
 
     const validator = Validator.isCommand(data);
     if (validator.error) {
@@ -17,9 +17,31 @@ class Command {
       `);
     }
 
+    this.type = data.type ?? 'CHAT_INPUT';
+
+    this.name = data.name;
+
+    this.description = data.description ?? `${this.name.charAt(0).toUpperCase() + this.name.slice(1)} Command`;
+
     this.protected = data.protected ?? false;
 
-    this.requiredPermissions = data.requiredPermissions;
+    this.ownerOnly = Boolean(data.ownerOnly);
+
+    this.guildOnly = Boolean(data.guildOnly);
+
+    this.guildIds = data.guildIds || null;
+
+    this.defaultPermission = data.defaultPermission ?? true;
+    
+    this.clientPermissions = data.clientPermissions || null;
+
+    this.userPermissions = data.userPermissions || null;
+
+    this.permissions = data.permissions || null;
+
+    this.args = data.args;
+
+    this.throttler = data.throttler || null;
 
     this.deferEphemeral = data.deferEphemeral ?? false;
 
@@ -28,10 +50,7 @@ class Command {
     this._ids = new Collection();
 
     this._throttles = new Map();
-
-    this._patch(data);
   }
-  
 
   get ids() {
     return this._ids;
@@ -42,7 +61,7 @@ class Command {
     return `${this.type}:${prefix}:${this.name}`;
   }
 
-  get isGlobal(data = this) {
+  static isGlobal(data = this) {
     return !data.guildIds || data.guildIds?.includes('global');
   }
 
@@ -51,35 +70,6 @@ class Command {
   }
 
   _patch(data) {
-    if ('name' in data) {
-      this.name = data.name;
-    }
-    if ('description' in data) {
-      this.description = data.description;
-    } else {
-      this.description ??= `${this.name.charAt(0).toUpperCase() + this.name.slice(1)} Command`;
-    }
-    if ('type' in data) {
-      this.type = data.type;
-    } else {
-      this.type ??= 'CHAT_INPUT';
-    }
-    if ('args' in data) {
-      this.args = data.args;
-    }
-    if ('defaultPermission' in data) {
-      this.defaultPermission = data.defaultPermission;
-    }
-    //
-    if ('guildIds' in data) {
-      this.guildIds = Array.isArray(data.guildIds) ? data.guildIds : [data.guildIds];
-    }
-    if ('permissions' in data) {
-      this.permissions = data.permissions;
-    }
-    if ('throttler' in data) {
-      this.throttler = data.throttler;
-    }
   }
 
   hasPermission(interaction) {
