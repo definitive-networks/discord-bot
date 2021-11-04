@@ -17,24 +17,28 @@ class BotClient extends Client {
 
     for (const [key, val] of Object.entries(this.config.directories)) {
       if (key === 'root') {
-        if (val?.length && !existsSync(val)) {
+        if (typeof val !== 'string' || !existsSync(val)) {
           throw new Error(`Invalid directory was provided for ${key}: ${val}`);
         }
         continue;
       }
-      this.config.directories[key] =
-        typeof val === 'boolean' && val === false
-          ? val
-          : path.join(
-              ...(this.config.directories.root && [this.config.directories.root]),
-              ...(typeof val === 'string' && val.length ? val.split('/').filter(data => data) : [key]),
-            );
+
+      const directory = (typeof val === 'string' && val.length)
+        ? val.split('/').filter(data => data)
+        : (val === true ? [key] : false);
+        
+      this.config.directories[key] = directory && path.join(
+        ...(this.config.directories.root && [this.config.directories.root]),
+        ...directory,
+      );
+
       if (this.config.directories[key] && !existsSync(this.config.directories[key])) {
         throw new Error(`Invalid directory was provided for ${key}: ${this.config.directories[key]}`);
       }
     }
 
     this.commands = new CommandManager(this);
+    this.registry = new Registry(this);
 
     if (process.env.NODE_ENV === 'development') {
       this.on('error', err => console.error(err));
